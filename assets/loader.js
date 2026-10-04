@@ -205,6 +205,11 @@
   // ---------- 圏外でも開けるようにする（Service Worker） ----------
   if ("serviceWorker" in navigator && /^(https:|http:\/\/(localhost|127\.0\.0\.1)[:/])/.test(location.href)) {
     navigator.serviceWorker.register("sw.js").catch(function () {});
+    // 新しい版が届いたら一度だけ開き直して、すぐ新しい見た目にする
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
   }
 
   if (!window.indexedDB) { showImporter(); return; }

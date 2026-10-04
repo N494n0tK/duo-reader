@@ -1,6 +1,6 @@
 // 公開版のアプリ本体（DUOの本文は含まない）を端末に保存し、圏外でも開けるようにする。
 // VERSION と FILES は tools/build_web.py が書き込む。中身が変わると VERSION が変わり、次に開いたときに更新される。
-var VERSION = "a0c41b3d62a7";
+var VERSION = "6aa6c8dfed65";
 var CACHE = "duo-shell-" + VERSION;
 var FILES = ["./", "./index.html", "./assets/app.css", "./assets/app.js", "./assets/loader.js", "./assets/loader.css", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 

@@ -466,7 +466,7 @@
     html += "</div>";
 
     html += '<div class="rail" data-rail role="slider" aria-label="例文の位置" aria-valuemin="1" aria-valuemax="' + SENTENCES.length + '" aria-valuenow="' + sid + '" style="--p:' + lastP + '">' +
-      '<span class="rail-label">#' + pad3(sid) + '</span><span class="rail-cursor"></span></div>';
+      '<span class="rail-label">#' + pad3(sid) + '</span><span class="rail-cursor"></span><span class="rail-peek" aria-hidden="true"></span></div>';
 
     if (word) {
       html += '<header class="headword"><div class="headword-line"><h1><span>' + esc(word.word) + "</span></h1>" +
@@ -497,6 +497,13 @@
         '<span><span class="w">' + esc(w.word) + '</span><span class="m ja">' + esc(w.meaning) + "</span></span>" +
         '<span class="p">' + esc(posLabel(w.pos)) + "</span></button>";
     }).join("") + "</div>";
+
+    if (!opts.home) {
+      html += '<nav class="dock" aria-label="例文の移動">' +
+        '<button class="nav-btn" data-go="' + (sid - 1) + '"' + (sid <= 1 ? " disabled" : "") + '><span class="sr">前の例文</span>' + ICON.prev + "</button>" +
+        '<span class="dock-num">#' + pad3(sid) + "<small>/ " + SENTENCES.length + "</small></span>" +
+        '<button class="nav-btn" data-go="' + (sid + 1) + '"' + (sid >= SENTENCES.length ? " disabled" : "") + '><span class="sr">次の例文</span>' + ICON.next + "</button></nav>";
+    }
 
     if (opts.home) {
       html += '<p class="home-keys"><kbd>/</kbd> 検索　<kbd>←</kbd><kbd>→</kbd> 前後の例文　<kbd>Esc</kbd> 閉じる</p>';
@@ -617,6 +624,7 @@
 
   function go(href) {
     if (location.hash === href) route();
+    else if (mobile.matches) { history.replaceState(null, "", href); route(); }
     else location.hash = href;
   }
 
@@ -684,7 +692,6 @@
     if ((t = e.target.closest("[data-href]"))) { go(t.dataset.href); return; }
     if ((t = e.target.closest("[data-go]"))) { go("#/s/" + t.dataset.go); return; }
     if (e.target.closest("[data-shuffle]")) { renderDetail("s", randomSid(), { home: true, shuffle: true }); return; }
-    if ((t = e.target.closest("[data-rail]"))) { go("#/s/" + railSid(t, e)); return; }
     if (e.target.closest("[data-back]")) { go("#/"); }
   });
 
@@ -707,6 +714,90 @@
     rail.dataset.hover = "#" + pad3(railSid(rail, e));
     rail.style.setProperty("--hx", (e.clientX - rail.getBoundingClientRect().left) + "px");
   });
+
+  // ---------- rail: press and drag to scrub through the 560 sentences ----------
+  var scrub = null;
+  function scrubTo(e) {
+    var sid = railSid(scrub.rail, e);
+    if (sid === scrub.sid) return;
+    scrub.sid = sid;
+    scrub.rail.style.setProperty("--p", (sid - 1) / (SENTENCES.length - 1));
+    scrub.rail.setAttribute("aria-valuenow", sid);
+    scrub.label.textContent = "#" + pad3(sid);
+    scrub.peek.innerHTML = "<b>#" + pad3(sid) + "</b>" + esc(SENTENCES[sid - 1].en);
+  }
+  $detail.addEventListener("pointerdown", function (e) {
+    var rail = e.target.closest("[data-rail]");
+    if (!rail || (e.pointerType === "mouse" && e.button !== 0)) return;
+    e.preventDefault();
+    try { rail.setPointerCapture(e.pointerId); } catch (err) {}
+    scrub = { rail: rail, sid: 0, label: rail.querySelector(".rail-label"), peek: rail.querySelector(".rail-peek") };
+    rail.classList.add("dragging");
+    scrubTo(e);
+  });
+  $detail.addEventListener("pointermove", function (e) { if (scrub) scrubTo(e); });
+  function endScrub(e) {
+    if (!scrub) return;
+    var s = scrub;
+    scrub = null;
+    s.rail.classList.remove("dragging");
+    if (e.type === "pointerup" && s.sid !== lastSid) {
+      lastP = (s.sid - 1) / (SENTENCES.length - 1); // the new rail starts where the finger let go
+      go("#/s/" + s.sid);
+    } else {
+      s.rail.style.setProperty("--p", lastP);
+      s.label.textContent = "#" + pad3(lastSid);
+    }
+  }
+  $detail.addEventListener("pointerup", endScrub);
+  $detail.addEventListener("pointercancel", endScrub);
+
+  // ---------- swipe left / right: next / previous sentence ----------
+  var swipe = null;
+  function swipeTarget(dx) {
+    var sid = lastSid + (dx < 0 ? 1 : -1);
+    return sid >= 1 && sid <= SENTENCES.length ? sid : 0;
+  }
+  $detail.addEventListener("touchstart", function (e) {
+    swipe = null;
+    if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
+    if (e.target.closest(".rail, pre, .ety-chain, input")) return;
+    var t = e.touches[0];
+    swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };
+  }, { passive: true });
+  $detail.addEventListener("touchmove", function (e) {
+    if (!swipe) return;
+    var t = e.touches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y;
+    if (!swipe.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { swipe = null; return; }
+      if (Math.abs(dx) < 10) return;
+      swipe.on = true;
+      swipe.time = Date.now();
+      swipe.art = $detail.querySelector(".detail");
+      swipe.art.classList.add("settled", "swiping");
+    }
+    swipe.dx = swipeTarget(dx) ? dx : dx / 4; // rubber band at #001 and #560
+    swipe.art.style.setProperty("--sx", swipe.dx + "px");
+    swipe.art.style.setProperty("--so", Math.max(.35, 1 - Math.abs(swipe.dx) / 600));
+  }, { passive: true });
+  function endSwipe() {
+    if (!swipe || !swipe.on) { swipe = null; return; }
+    var s = swipe, art = s.art;
+    swipe = null;
+    art.classList.remove("swiping");
+    var fast = Math.abs(s.dx) / Math.max(1, Date.now() - s.time) > .45;
+    var target = swipeTarget(s.dx);
+    if (target && (Math.abs(s.dx) > 72 || (fast && Math.abs(s.dx) > 28))) {
+      art.style.setProperty("--sx", (s.dx < 0 ? -1 : 1) * window.innerWidth * .6 + "px");
+      art.style.setProperty("--so", 0);
+      setTimeout(function () { go("#/s/" + target); }, 140);
+    } else {
+      art.style.setProperty("--sx", "0px");
+      art.style.setProperty("--so", 1);
+    }
+  }
+  $detail.addEventListener("touchend", endSwipe);
+  $detail.addEventListener("touchcancel", endSwipe);
 
   document.addEventListener("keydown", function (e) {
     var typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
