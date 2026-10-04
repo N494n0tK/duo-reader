@@ -638,9 +638,18 @@
     renderList();
     $results.scrollTop = 0;
   }
+  var $qClear = document.getElementById("q-clear");
+  function syncClear() { $qClear.hidden = !$q.value; }
   $q.addEventListener("input", function () {
+    syncClear();
     clearTimeout(timer);
     timer = setTimeout(applyQuery, 90);
+  });
+  $qClear.addEventListener("click", function () {
+    $q.value = "";
+    syncClear();
+    applyQuery();
+    $q.focus();
   });
   $q.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
