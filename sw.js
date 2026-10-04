@@ -1,12 +1,19 @@
 // 公開版のアプリ本体（DUOの本文は含まない）を端末に保存し、圏外でも開けるようにする。
 // VERSION と FILES は tools/build_web.py が書き込む。中身が変わると VERSION が変わり、次に開いたときに更新される。
-var VERSION = "6aa6c8dfed65";
+var VERSION = "e60906c9629f";
 var CACHE = "duo-shell-" + VERSION;
-var FILES = ["./", "./index.html", "./assets/app.css", "./assets/app.js", "./assets/loader.js", "./assets/loader.css", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
+var FILES = ["./", "./index.html", "./assets/app.css?v=8baa4cb1c5", "./assets/app.js?v=10c5734a2f", "./assets/loader.js?v=862d3ae4a3", "./assets/loader.css?v=d640ee055c", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
+// 公開直後は配信側に古いファイルが残っていることがあるので、版番号付きのURLで取り直してから保存する
 self.addEventListener("install", function (e) {
   e.waitUntil(caches.open(CACHE).then(function (cache) {
-    return cache.addAll(FILES.map(function (f) { return new Request(f, { cache: "reload" }); }));
+    return Promise.all(FILES.map(function (f) {
+      var url = (f === "./" ? "./index.html" : f) + (f.indexOf("?") > -1 ? "&" : "?") + "sw=" + VERSION;
+      return fetch(url, { cache: "reload" }).then(function (res) {
+        if (!res.ok) throw new Error(f + " " + res.status);
+        return cache.put(f, res);
+      });
+    }));
   }).then(function () { return self.skipWaiting(); }));
 });
 
@@ -22,7 +29,7 @@ self.addEventListener("fetch", function (e) {
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
   e.respondWith(caches.open(CACHE).then(function (cache) {
     var key = req.mode === "navigate" ? "./index.html" : req;
-    return cache.match(key, { ignoreSearch: true }).then(function (hit) {
+    return cache.match(key, { ignoreSearch: req.mode === "navigate" }).then(function (hit) {
       return hit || fetch(req);
     });
   }));
