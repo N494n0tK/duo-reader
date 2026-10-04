@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0b0d14">
+<title>DUO Reader</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230b0d14'/%3E%3Crect x='12' y='34' width='40' height='12' rx='3' fill='%23f5cd55' opacity='.6'/%3E%3Ctext x='32' y='42' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23eef0f7' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/app.css">
+<link rel="stylesheet" href="assets/loader.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DUO">
+<script>
+  try { var t = localStorage.getItem("duo.theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+<div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<div class="app" id="app">
+
+  <section class="pane pane-list" aria-label="検索と一覧">
+    <div class="list-head">
+      <header class="masthead">
+        <div class="brand">
+          <span class="brand-mark">DUO</span>
+          <span class="brand-sub" id="brand-count"></span>
+        </div>
+        <div class="tools">
+          <button class="icon-btn" id="data-btn" type="button" title="データ" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>
+          <span class="sr">データ</span>
+        </button>
+        <button class="icon-btn" id="toggle-ja" type="button" aria-pressed="false" title="日本語を隠す">
+            <span aria-hidden="true">あ</span><span class="sr">日本語を隠す</span>
+          </button>
+          <button class="icon-btn" id="toggle-theme" type="button" title="ライト／ダーク切替">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+            <span class="sr">ライト／ダーク切替</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+        <input id="q" type="search" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false"
+               placeholder="英語・日本語・番号で検索" aria-label="検索">
+        <kbd class="search-kbd" aria-hidden="true">/</kbd>
+      </div>
+
+      <nav class="tabs" id="tabs" role="tablist" aria-label="表示する種類" data-active="words">
+        <span class="tab-thumb" aria-hidden="true"></span>
+        <button role="tab" class="tab" data-tab="words" aria-selected="true">単語 <span class="tab-count" id="count-words"></span></button>
+        <button role="tab" class="tab" data-tab="sentences" aria-selected="false">例文 <span class="tab-count" id="count-sentences"></span></button>
+        <button role="tab" class="tab" data-tab="terms" aria-selected="false" hidden>ゲーム・技術 <span class="tab-count" id="count-terms"></span></button>
+      </nav>
+
+      <div class="pos-filter" id="pos-filter" aria-label="絞り込み"></div>
+    </div>
+
+    <div class="results" id="results" role="list"></div>
+  </section>
+
+  <section class="pane pane-detail" id="detail" aria-label="詳細" tabindex="-1"></section>
+
+</div>
+
+<script src="assets/loader.js"></script>
+</body>
+</html>
