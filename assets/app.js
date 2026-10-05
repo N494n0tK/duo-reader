@@ -437,6 +437,8 @@
     prev: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
     next: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
     shuffle: '<svg viewBox="0 0 24 24"><path d="M4 7h3c5 0 5 10 10 10h3M4 17h3c1.6 0 2.7-1 3.6-2.3M13.4 9.3C14.3 8 15.4 7 17 7h3M17 4l3 3-3 3M17 14l3 3-3 3"/></svg>',
+    prev5: '<svg viewBox="0 0 24 24"><path d="M12 5l-7 7 7 7M19 5l-7 7 7 7"/></svg>',
+    next5: '<svg viewBox="0 0 24 24"><path d="M5 5l7 7-7 7M12 5l7 7-7 7"/></svg>',
     del: '<svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>'
   };
 
@@ -501,9 +503,9 @@
 
     if (!opts.home) {
       html += '<nav class="dock" aria-label="例文の移動">' +
-        '<button class="nav-btn" data-go="' + (sid - 1) + '"' + (sid <= 1 ? " disabled" : "") + '><span class="sr">前の例文</span>' + ICON.prev + "</button>" +
+        '<button class="nav-btn" data-go="' + Math.max(1, sid - 5) + '"' + (sid <= 1 ? " disabled" : "") + '><span class="sr">5つ前の例文</span>' + ICON.prev5 + "</button>" +
         '<span class="dock-num" title="ダブルタップで番号を入力">#' + pad3(sid) + "<small>/ " + SENTENCES.length + "</small></span>" +
-        '<button class="nav-btn" data-go="' + (sid + 1) + '"' + (sid >= SENTENCES.length ? " disabled" : "") + '><span class="sr">次の例文</span>' + ICON.next + "</button></nav>";
+        '<button class="nav-btn" data-go="' + Math.min(SENTENCES.length, sid + 5) + '"' + (sid >= SENTENCES.length ? " disabled" : "") + '><span class="sr">5つ先の例文</span>' + ICON.next5 + "</button></nav>";
     }
 
     if (opts.home) {
