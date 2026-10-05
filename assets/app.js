@@ -436,7 +436,8 @@
     back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
     prev: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
     next: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
-    shuffle: '<svg viewBox="0 0 24 24"><path d="M4 7h3c5 0 5 10 10 10h3M4 17h3c1.6 0 2.7-1 3.6-2.3M13.4 9.3C14.3 8 15.4 7 17 7h3M17 4l3 3-3 3M17 14l3 3-3 3"/></svg>'
+    shuffle: '<svg viewBox="0 0 24 24"><path d="M4 7h3c5 0 5 10 10 10h3M4 17h3c1.6 0 2.7-1 3.6-2.3M13.4 9.3C14.3 8 15.4 7 17 7h3M17 4l3 3-3 3M17 14l3 3-3 3"/></svg>',
+    del: '<svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>'
   };
 
   var lastSid = null, lastP = 0;
@@ -501,7 +502,7 @@
     if (!opts.home) {
       html += '<nav class="dock" aria-label="例文の移動">' +
         '<button class="nav-btn" data-go="' + (sid - 1) + '"' + (sid <= 1 ? " disabled" : "") + '><span class="sr">前の例文</span>' + ICON.prev + "</button>" +
-        '<span class="dock-num">#' + pad3(sid) + "<small>/ " + SENTENCES.length + "</small></span>" +
+        '<span class="dock-num" title="ダブルタップで番号を入力">#' + pad3(sid) + "<small>/ " + SENTENCES.length + "</small></span>" +
         '<button class="nav-btn" data-go="' + (sid + 1) + '"' + (sid >= SENTENCES.length ? " disabled" : "") + '><span class="sr">次の例文</span>' + ICON.next + "</button></nav>";
     }
 
@@ -690,8 +691,14 @@
     }
   });
 
+  var lastNumTap = 0;
   $detail.addEventListener("click", function (e) {
     var t;
+    if (e.target.closest(".dock-num, .card-num")) {
+      var now = Date.now();
+      if (now - lastNumTap < 400) { lastNumTap = 0; openDial(); } else lastNumTap = now;
+      return;
+    }
     if ((t = e.target.closest(".hide-ja .ja")) && !t.classList.contains("shown")) {
       t.classList.add("shown");
       return;
@@ -807,6 +814,81 @@
   }
   $detail.addEventListener("touchend", endSwipe);
   $detail.addEventListener("touchcancel", endSwipe);
+
+  // ---------- number dial: double-tap the sentence number, type, jump ----------
+  var dial = null;
+  function openDial() {
+    if (dial || !lastSid) return;
+    var N = SENTENCES.length, typed = "", autoTimer = null;
+    var el = document.createElement("div");
+    el.className = "dial";
+    el.innerHTML =
+      '<div class="dial-card" role="dialog" aria-modal="true" aria-label="例文番号を入力して移動">' +
+        '<div class="dial-screen"><span class="dial-num"></span><span class="dial-of">/ ' + N + "</span></div>" +
+        '<p class="dial-peek" aria-live="polite"></p>' +
+        '<div class="dial-keys">' +
+          [1, 2, 3, 4, 5, 6, 7, 8, 9].map(function (k) { return '<button type="button" data-key="' + k + '">' + k + "</button>"; }).join("") +
+          '<button type="button" class="fn" data-key="del" aria-label="1文字消す">' + ICON.del + "</button>" +
+          '<button type="button" data-key="0">0</button>' +
+          '<button type="button" class="go" data-key="go" aria-label="この例文へ移動">' + ICON.next + "</button>" +
+        "</div>" +
+      "</div>";
+    document.body.appendChild(el);
+    var card = el.querySelector(".dial-card"), $num = el.querySelector(".dial-num"),
+      $peek = el.querySelector(".dial-peek"), $go = el.querySelector(".go");
+    dial = { el: el };
+
+    function value() { return +typed || 0; }
+    function valid() { var n = value(); return n >= 1 && n <= N; }
+    function update(pop) {
+      $num.textContent = "#" + (typed || pad3(lastSid));
+      $num.classList.toggle("ph", !typed);
+      if (pop) { $num.classList.remove("pop"); void $num.offsetWidth; $num.classList.add("pop"); }
+      $peek.textContent = !typed ? "番号を打つと、その例文へ移動します" : valid() ? SENTENCES[value() - 1].en : "1〜" + N + " の番号です";
+      $peek.classList.toggle("en", !!typed && valid());
+      $go.disabled = !valid();
+    }
+    function shake() { card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake"); }
+    function jump() {
+      if (!valid()) return shake();
+      var n = value();
+      close();
+      if (n !== lastSid) go("#/s/" + n);
+    }
+    function press(key) {
+      clearTimeout(autoTimer);
+      if (key === "go") return jump();
+      if (key === "del") { typed = typed.slice(0, -1); return update(false); }
+      if (!typed && key === "0") return shake();
+      if (typed.length >= 3 || +(typed + key) > N) return shake();
+      typed += key;
+      update(true);
+      // no more digits could follow: go right away
+      if (typed.length === 3 || value() * 10 > N) autoTimer = setTimeout(jump, 320);
+    }
+    function onKey(e) {
+      e.stopPropagation();
+      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); press(e.key); }
+      else if (e.key === "Backspace") { e.preventDefault(); press("del"); }
+      else if (e.key === "Enter") { e.preventDefault(); press("go"); }
+      else if (e.key === "Escape") { e.preventDefault(); close(); }
+    }
+    function close() {
+      clearTimeout(autoTimer);
+      window.removeEventListener("keydown", onKey, true);
+      el.classList.remove("open");
+      dial = null;
+      setTimeout(function () { el.remove(); }, 320);
+    }
+    el.addEventListener("click", function (e) {
+      var k = e.target.closest("[data-key]");
+      if (k) press(k.dataset.key);
+      else if (!e.target.closest(".dial-card")) close();
+    });
+    window.addEventListener("keydown", onKey, true);
+    update(false);
+    requestAnimationFrame(function () { el.classList.add("open"); });
+  }
 
   document.addEventListener("keydown", function (e) {
     var typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
