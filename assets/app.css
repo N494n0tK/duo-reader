@@ -752,6 +752,13 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .dock-num small { font: normal 11px var(--mono); color: var(--faint); margin-left: 5px; }
 }
 
+/* iPhone home-screen app: iOS reports the screen a little short (see index.html),
+   so every full-screen layer is sized to the real screen height instead of "top to bottom" */
+html.ios-app, html.ios-app body { height: var(--screen-h, 100vh); }
+html.ios-app .ambient, html.ios-app .pane-list, html.ios-app .pane-detail, html.ios-app .dial,
+html.ios-app .importer, html.ios-app .data-sheet { bottom: auto; height: var(--screen-h, 100vh); }
+html.ios-app .dock { bottom: auto; top: calc(var(--screen-h, 100vh) - 74px - env(safe-area-inset-bottom)); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .hl, .headword h1 span, .brand-mark { --draw: 1; }

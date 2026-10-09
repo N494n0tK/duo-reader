@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#0b0d14">
 <title>DUO Reader</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230b0d14'/%3E%3Crect x='12' y='34' width='40' height='12' rx='3' fill='%23f5cd55' opacity='.6'/%3E%3Ctext x='32' y='42' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23eef0f7' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/app.css?v=f947b5e3e9">
+<link rel="stylesheet" href="assets/app.css?v=c3c2a6ad64">
 <link rel="stylesheet" href="assets/loader.css?v=66f2ba4481">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -17,6 +17,21 @@
 <meta name="apple-mobile-web-app-title" content="DUO">
 <script>
   try { var t = localStorage.getItem("duo.theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  // iPhone のホーム画面アプリでは画面の高さが少し短く報告され、下に隙間ができる。実際の画面の高さに合わせる
+  (function () {
+    var app = navigator.standalone === true || (window.matchMedia && matchMedia("(display-mode: standalone)").matches);
+    if (!/iPhone|iPod/.test(navigator.userAgent) || !app) return;
+    var root = document.documentElement;
+    function fit() {
+      var portrait = window.innerHeight >= window.innerWidth;
+      var full = portrait ? Math.max(screen.width, screen.height) : Math.min(screen.width, screen.height);
+      root.style.setProperty("--screen-h", Math.max(full, window.innerHeight) + "px");
+    }
+    root.classList.add("ios-app");
+    fit();
+    window.addEventListener("resize", fit);
+    window.addEventListener("orientationchange", function () { setTimeout(fit, 300); });
+  })();
 </script>
 </head>
 <body>
