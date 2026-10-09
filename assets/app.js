@@ -446,6 +446,8 @@
     prev: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
     next: '<svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
     shuffle: '<svg viewBox="0 0 24 24"><path d="M4 7h3c5 0 5 10 10 10h3M4 17h3c1.6 0 2.7-1 3.6-2.3M13.4 9.3C14.3 8 15.4 7 17 7h3M17 4l3 3-3 3M17 14l3 3-3 3"/></svg>',
+    search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>',
+    close: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg>',
     prev5: '<svg viewBox="0 0 24 24"><path d="M12 5l-7 7 7 7M19 5l-7 7 7 7"/></svg>',
     next5: '<svg viewBox="0 0 24 24"><path d="M5 5l7 7-7 7M12 5l7 7-7 7"/></svg>',
     del: '<svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>'
@@ -467,6 +469,17 @@
 
     html += '<div class="detail-top">';
     html += '<button class="nav-btn back" data-back title="一覧に戻る"><span class="sr">一覧に戻る</span>' + ICON.back + "</button>";
+    // phones: a magnifier that stretches into a sentence search
+    if (!opts.home) {
+      html += '<div class="seek">' +
+        '<div class="seek-bar">' +
+          '<button class="seek-btn" type="button" data-seek-open aria-label="例文を検索">' + ICON.search + "</button>" +
+          '<input class="seek-input" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1" placeholder="英語・日本語・番号" aria-label="例文を検索">' +
+          '<button class="seek-close" type="button" data-seek-close aria-label="検索を閉じる">' + ICON.close + "</button>" +
+        "</div>" +
+        '<div class="seek-panel"><div class="seek-list"></div></div>' +
+      "</div>";
+    }
     html += '<span class="eyebrow">' + (opts.home ? "ランダムな一文" : word ? "単語 " + word.id : "例文") + "</span>";
     html += '<span class="spacer"></span>';
     if (opts.home) {
@@ -702,9 +715,87 @@
     }
   });
 
+  // ---------- sentence search on the detail screen (phones) ----------
+  var seekQuery = "", seekTimer;
+  function seekEl() { return $detail.querySelector(".seek"); }
+  function openSeek() {
+    var el = seekEl();
+    if (!el) return;
+    var input = el.querySelector(".seek-input");
+    el.classList.add("open");
+    el.parentNode.classList.add("seeking");
+    input.tabIndex = 0;
+    input.value = seekQuery;
+    input.focus(); // must happen inside the tap for the iPhone keyboard to come up
+    if (seekQuery) { input.select(); renderSeek(); }
+  }
+  function closeSeek() {
+    var el = seekEl();
+    if (!el || !el.classList.contains("open")) return;
+    var input = el.querySelector(".seek-input");
+    clearTimeout(seekTimer);
+    input.blur();
+    input.tabIndex = -1;
+    el.classList.remove("open", "has-results");
+    el.parentNode.classList.remove("seeking");
+  }
+  function fitSeek(el) {
+    var vv = window.visualViewport, bottom = vv ? vv.height + vv.offsetTop : window.innerHeight;
+    el.style.setProperty("--seek-max", Math.max(140, bottom - el.getBoundingClientRect().top - 46 - 14) + "px");
+  }
+  function renderSeek() {
+    var el = seekEl();
+    if (!el) return;
+    var input = el.querySelector(".seek-input"), list = el.querySelector(".seek-list");
+    seekQuery = input.value;
+    var raw = seekQuery.trim(), q = norm(raw);
+    if (!q) { el.classList.remove("has-results"); return; }
+    var hits = searchSentences(q), LIMIT = 60;
+    list.innerHTML = hits.length
+      ? hits.slice(0, LIMIT).map(function (s, n) {
+          return '<button type="button" class="seek-row" data-seek-go="' + s.id + '"' + (s.id === lastSid ? ' aria-current="true"' : "") +
+            (n < 12 ? ' style="--i:' + n + '"' : "") + ">" +
+            '<span class="seek-num">#' + pad3(s.id) + "</span>" +
+            '<span class="seek-en" lang="en">' + markQuery(s.en, raw) + "</span>" +
+            '<span class="seek-ja ja">' + markQuery(s.ja, raw) + "</span></button>";
+        }).join("") + (hits.length > LIMIT ? '<p class="seek-note">ほか ' + (hits.length - LIMIT) + " 件。もう少し絞り込んでください</p>" : "")
+      : '<p class="seek-note">「' + esc(raw) + "」を含む例文はありません</p>";
+    list.scrollTop = 0;
+    fitSeek(el);
+    el.classList.add("has-results");
+  }
+  $detail.addEventListener("input", function (e) {
+    if (!e.target.classList.contains("seek-input")) return;
+    clearTimeout(seekTimer);
+    seekTimer = setTimeout(renderSeek, 80);
+  });
+  $detail.addEventListener("keydown", function (e) {
+    if (!e.target.classList.contains("seek-input")) return;
+    if (e.key === "Escape") { e.preventDefault(); closeSeek(); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      renderSeek();
+      var first = $detail.querySelector(".seek-row");
+      if (first) first.click();
+    }
+  });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", function () {
+    var el = seekEl();
+    if (el && el.classList.contains("has-results")) fitSeek(el);
+  });
+
   var lastNumTap = 0;
   $detail.addEventListener("click", function (e) {
-    var t;
+    var t, seek = seekEl();
+    if (seek && seek.classList.contains("open") && !e.target.closest(".seek, [data-back]")) { closeSeek(); return; }
+    if (e.target.closest("[data-seek-open]")) { if (seek.classList.contains("open")) seek.querySelector(".seek-input").focus(); else openSeek(); return; }
+    if (e.target.closest("[data-seek-close]")) { closeSeek(); return; }
+    if ((t = e.target.closest("[data-seek-go]"))) {
+      var to = +t.dataset.seekGo;
+      closeSeek();
+      if (to !== lastSid) go("#/s/" + to);
+      return;
+    }
     if (e.target.closest(".dock-num, .card-num")) {
       var now = Date.now();
       if (now - lastNumTap < 400) { lastNumTap = 0; openDial(); } else lastNumTap = now;
@@ -788,7 +879,7 @@
   $detail.addEventListener("touchstart", function (e) {
     swipe = null;
     if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
-    if (e.target.closest(".rail, pre, .ety-chain, input")) return;
+    if (e.target.closest(".rail, pre, .ety-chain, input, .seek")) return;
     var t = e.touches[0];
     swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };
   }, { passive: true });

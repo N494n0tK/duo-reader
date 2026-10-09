@@ -1,8 +1,8 @@
 // 公開版のアプリ本体（DUOの本文は含まない）を端末に保存し、圏外でも開けるようにする。
 // VERSION と FILES は tools/build_web.py が書き込む。中身が変わると VERSION が変わり、次に開いたときに更新される。
-var VERSION = "095321b97f49";
+var VERSION = "09b8ad979566";
 var CACHE = "duo-shell-" + VERSION;
-var FILES = ["./", "./index.html", "./assets/app.css?v=a73d623ea6", "./assets/app.js?v=0f9aba481a", "./assets/loader.js?v=2143c90c10", "./assets/loader.css?v=66f2ba4481", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
+var FILES = ["./", "./index.html", "./assets/app.css?v=f947b5e3e9", "./assets/app.js?v=57276b4e24", "./assets/loader.js?v=b7ca07b918", "./assets/loader.css?v=66f2ba4481", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 // 公開直後は配信側に古いファイルが残っていることがあるので、版番号付きのURLで取り直してから保存する
 self.addEventListener("install", function (e) {
