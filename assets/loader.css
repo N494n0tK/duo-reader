@@ -4,7 +4,7 @@
 
 /* ===== データがまだないときの画面 ===== */
 .importer {
-  min-height: 100vh; min-height: 100dvh;
+  position: fixed; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
   display: grid; place-items: center;
   padding: calc(24px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
 }

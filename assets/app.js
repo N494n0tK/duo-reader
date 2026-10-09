@@ -282,8 +282,17 @@
   var $tabs = Array.prototype.slice.call(document.querySelectorAll(".tab:not([hidden])"));
   $tabBar.style.setProperty("--n", $tabs.length);
 
-  document.getElementById("brand-count").textContent =
-    WORDS.length.toLocaleString() + " 語 · " + SENTENCES.length + " 例文";
+  document.getElementById("brand-count").innerHTML =
+    "<span>" + WORDS.length.toLocaleString() + " 語</span><span>" + SENTENCES.length + " 例文</span>";
+
+  // phones: the list scrolls under a fixed header, so leave room for the header's real height
+  var $listHead = document.querySelector(".list-head");
+  function syncHeadHeight() {
+    document.querySelector(".pane-list").style.setProperty("--head-h", $listHead.offsetHeight + "px");
+  }
+  syncHeadHeight();
+  if (window.ResizeObserver) new ResizeObserver(syncHeadHeight).observe($listHead);
+  else window.addEventListener("resize", syncHeadHeight);
 
   // ---------- search ----------
   function scoreWord(w, q, wordStart) {
