@@ -1,0 +1,46 @@
+/* ホーム画面ウィジェット（4×2）。アプリと同じ光とガラスで、1枚のカードに1文。 */
+
+html, body { height: 100%; overflow: hidden; }
+body.widget { background: var(--bg); }
+/* ウィジェットは静止画として撮られるので、動きは止めて完成した状態で見せる */
+.widget .ambient i { animation: none; filter: blur(40px); }
+.widget .ambient i:nth-child(1) { top: -38vmax; right: -20vmax; }
+.widget .ambient i:nth-child(2) { bottom: -40vmax; left: -24vmax; }
+.widget .hl { animation: none; --draw: 1; --h: 40%; cursor: default; }
+
+.wg { position: fixed; inset: 0; display: flex; padding: max(6px, 3.2vmin); }
+.wg-card {
+  --fs: 16px;
+  position: relative; flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: max(10px, 6.5vmin) max(12px, 4.6vw) max(10px, 6vmin);
+  border-radius: max(16px, 11vmin);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(26px) saturate(175%); backdrop-filter: blur(26px) saturate(175%);
+  box-shadow: var(--glass-inset), var(--glass-shadow);
+}
+.wg-card::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: linear-gradient(140deg, var(--glass-edge-a), var(--glass-edge-b) 32%, var(--glass-edge-b) 68%, var(--glass-edge-a));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: .7;
+}
+
+.wg-head { flex: none; display: flex; align-items: baseline; gap: max(4px, 1.6vw); }
+.wg-num { font: italic 400 clamp(15px, 13vmin, 30px)/1 var(--serif); color: var(--marker); }
+.wg-of { font: clamp(8px, 5vmin, 12px) var(--mono); color: var(--faint); }
+.wg-time { margin-left: auto; font: clamp(8px, 5vmin, 12px) var(--mono); color: var(--faint); }
+.wg-brand {
+  font: italic 600 clamp(11px, 8vmin, 18px)/1 var(--serif); padding: 0 2px; margin-left: max(4px, 1.6vw);
+  background: linear-gradient(var(--marker-strong), var(--marker-strong)) no-repeat 0 88% / 100% 38%;
+}
+.wg-msg .wg-brand { margin-left: 0; }
+
+.wg-body { flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; }
+.wg-text { width: 100%; }
+.wg-en { margin: 0; font: 400 var(--fs)/1.38 var(--serif); overflow-wrap: break-word; }
+.wg-ja { margin: .5em 0 0; font-size: calc(var(--fs) * .64); line-height: 1.5; color: var(--muted); }
+.wg-ja.solo { margin: 0; font-size: calc(var(--fs) * .84); line-height: 1.55; color: var(--text); }
+.wg-msg-title { margin: 0 0 .3em; font-size: clamp(12px, 8vmin, 17px); font-weight: 600; }
+.wg-msg-body { margin: 0; font-size: clamp(10px, 6vmin, 13px); line-height: 1.5; color: var(--muted); }

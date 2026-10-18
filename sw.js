@@ -1,8 +1,8 @@
 // 公開版のアプリ本体（DUOの本文は含まない）を端末に保存し、圏外でも開けるようにする。
 // VERSION と FILES は tools/build_web.py が書き込む。中身が変わると VERSION が変わり、次に開いたときに更新される。
-var VERSION = "072aa7511de0";
+var VERSION = "e3726ddb7080";
 var CACHE = "duo-shell-" + VERSION;
-var FILES = ["./", "./index.html", "./assets/app.css?v=c3c2a6ad64", "./assets/app.js?v=57276b4e24", "./assets/loader.js?v=b7ca07b918", "./assets/loader.css?v=66f2ba4481", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
+var FILES = ["./", "./index.html", "./assets/app.css?v=c3c2a6ad64", "./assets/app.js?v=b1ba44f8d2", "./assets/loader.js?v=58630318be", "./assets/loader.css?v=e1147764e0", "./assets/marks.js?v=e6e75c5b73", "./widget.html", "./assets/widget.js?v=b7eb58712a", "./assets/widget.css?v=80c89cfd6a", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 // 公開直後は配信側に古いファイルが残っていることがあるので、版番号付きのURLで取り直してから保存する
 self.addEventListener("install", function (e) {
@@ -28,7 +28,8 @@ self.addEventListener("fetch", function (e) {
   var req = e.request;
   if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
   e.respondWith(caches.open(CACHE).then(function (cache) {
-    var key = req.mode === "navigate" ? "./index.html" : req;
+    // ページを開くとき：widget.html はウィジェットのページ、それ以外はアプリ本体
+    var key = req.mode !== "navigate" ? req : /\/widget\.html$/.test(new URL(req.url).pathname) ? "./widget.html" : "./index.html";
     return cache.match(key, { ignoreSearch: req.mode === "navigate" }).then(function (hit) {
       return hit || fetch(req);
     });

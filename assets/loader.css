@@ -96,3 +96,41 @@
 }
 
 #data-btn[hidden] { display: none; }
+
+/* ===== ウィジェット用のリンクを作る ===== */
+.data-card { max-height: calc(100% - 20px); overflow-y: auto; overscroll-behavior: contain; }
+.wm-open { margin-top: 10px; }
+.wm-lead { margin: 0 0 14px; font-size: 13.5px; line-height: 1.6; color: var(--muted); }
+.wm-row { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
+.wm-label { flex: none; width: 2.6em; font-size: 13px; color: var(--faint); }
+.wm-num {
+  width: 5.2em; height: 40px; padding: 0 12px; border-radius: 999px; border: 0;
+  background: var(--pane); box-shadow: var(--glass-inset), inset 0 0 0 1px var(--glass-edge-b);
+  color: var(--text); font: italic 17px var(--serif); text-align: center;
+  -webkit-appearance: none; appearance: none;
+}
+.wm-num:focus { outline: none; box-shadow: var(--glass-inset), 0 0 0 2px var(--marker-strong); }
+.wm-tilde { color: var(--faint); }
+.wm-seg {
+  position: relative; flex: 1; display: grid; grid-template-columns: repeat(3, 1fr);
+  padding: 4px; border-radius: 999px; background: var(--pane); box-shadow: var(--glass-inset);
+}
+.wm-thumb {
+  position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 999px;
+  background: var(--thumb); box-shadow: var(--glass-inset), 0 4px 12px rgba(0, 0, 0, .2);
+  transform: translateX(calc(100% * var(--k, 2))); transition: transform .55s var(--spring);
+}
+.wm-seg button { position: relative; z-index: 1; height: 34px; font-size: 13.5px; font-weight: 600; color: var(--muted); transition: color .3s; }
+.wm-seg button[aria-checked="true"] { color: var(--text); }
+.wm-preview {
+  --wk: 1;
+  position: relative; width: 100%; aspect-ratio: 338 / 158; margin: 6px 0 8px;
+  border-radius: calc(22px * var(--wk)); overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35), 0 0 0 1px var(--glass-edge-b);
+}
+.wm-preview iframe {
+  position: absolute; top: 0; left: 0; width: 338px; height: 158px; border: 0;
+  transform: scale(var(--wk)); transform-origin: 0 0; pointer-events: none;
+}
+.wm-meta { min-height: 1.5em; margin: 0 0 6px; text-align: center; font: 12px var(--mono); color: var(--faint); }
+.wm-meta.error { color: var(--fix); font-family: var(--sans); }

@@ -83,7 +83,7 @@
     var old = document.querySelector(".importer");
     if (old) old.remove();
     var s = document.createElement("script");
-    s.src = "assets/app.js?v=57276b4e24";
+    s.src = "assets/app.js?v=b1ba44f8d2";
     document.body.appendChild(s);
     setupDataButton(pack);
   }
@@ -153,6 +153,7 @@
           '<dt>保存</dt><dd class="persist">確認中…</dd>' +
         "</dl>" +
         '<p class="imp-status" role="status" aria-live="polite"></p>' +
+        '<button type="button" class="sheet-btn wm-open" data-widget>ウィジェット用のリンクを作る</button>' +
         '<label class="imp-btn"><input type="file" class="imp-file">別のファイルを読み込む</label>' +
         '<button type="button" class="sheet-btn danger" data-delete>この端末からデータを消す</button>' +
         '<button type="button" class="sheet-btn" data-close>閉じる</button>' +
@@ -177,6 +178,7 @@
     var status = sheet.querySelector(".imp-status");
     sheet.addEventListener("click", function (e) {
       if (e.target === sheet || e.target.closest("[data-close]")) close();
+      if (e.target.closest("[data-widget]")) { close(); setTimeout(function () { openWidgetMaker(pack); }, 200); }
       if (e.target.closest("[data-delete]")) {
         if (!window.confirm("この端末に保存した DUO データを消します。もう一度使うにはファイルを読み込み直します。")) return;
         deletePack().then(function () { location.replace(location.pathname); });
@@ -200,6 +202,136 @@
     document.addEventListener("keydown", function onKey(e) {
       if (e.key === "Escape") { close(); document.removeEventListener("keydown", onKey); }
     });
+  }
+
+  // ---------- ウィジェット用のリンク ----------
+  // 選んだ範囲の例文を圧縮してリンクの # 以降に入れる（# 以降はサーバーに送られず、どこにも保存されない）。
+  // Web Widget アプリに貼ると、widget.html が1時間ごとに1文を選んで表示する。
+  function bytesToBase64url(bytes) {
+    var bin = "";
+    for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function deflate(text) {
+    return new Response(new Blob([text]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer()
+      .then(function (buf) { return new Uint8Array(buf); });
+  }
+  function spans(owner) {
+    var out = [], i = 0;
+    while (i < owner.length) {
+      if (!owner[i]) { i++; continue; }
+      var j = i;
+      while (j < owner.length && owner[j] === owner[i]) j++;
+      out.push([i, j]);
+      i = j;
+    }
+    return out;
+  }
+  function widgetLink(pack, marks, from, to, show) {
+    var items = pack.duo.sentences.filter(function (s) { return s.id >= from && s.id <= to; }).map(function (s) {
+      return [s.id, show === "ja" ? "" : s.en, show === "en" ? "" : s.ja, show === "ja" ? [] : spans(marks(s.id))];
+    });
+    var json = JSON.stringify({ v: 1, n: pack.duo.sentences.length, from: from, to: to, show: show, s: items });
+    var base = location.href.split("#")[0].split("?")[0].replace(/[^/]*$/, "") + "widget.html";
+    return deflate(json).then(function (bytes) { return base + "#d=" + bytesToBase64url(bytes); });
+  }
+
+  function openWidgetMaker(pack) {
+    var N = pack.duo.sentences.length, saved = {};
+    try { saved = JSON.parse(localStorage.getItem("duo.widget") || "{}"); } catch (e) {}
+    var cfg = { from: saved.from || 1, to: saved.to || N, show: saved.show || "both" };
+    var SHOW = [["en", "英語"], ["ja", "日本語"], ["both", "両方"]];
+    var sheet = document.createElement("div");
+    sheet.className = "data-sheet";
+    sheet.innerHTML =
+      '<div class="data-card wm" role="dialog" aria-modal="true" aria-labelledby="wm-title">' +
+        '<h2 id="wm-title">ウィジェット</h2>' +
+        '<p class="wm-lead">Web Widget アプリに貼るリンクを作ります。1時間ごとに、範囲の中からランダムに1文を表示します（4×2 サイズ向け）。</p>' +
+        '<div class="wm-row"><span class="wm-label">範囲</span>' +
+          '<input class="wm-num" type="number" inputmode="numeric" min="1" max="' + N + '" data-k="from" value="' + cfg.from + '">' +
+          '<span class="wm-tilde">〜</span>' +
+          '<input class="wm-num" type="number" inputmode="numeric" min="1" max="' + N + '" data-k="to" value="' + cfg.to + '"></div>' +
+        '<div class="wm-row"><span class="wm-label">表示</span><div class="wm-seg" role="radiogroup" style="--k:' +
+          SHOW.findIndex(function (x) { return x[0] === cfg.show; }) + '"><span class="wm-thumb" aria-hidden="true"></span>' +
+          SHOW.map(function (x) { return '<button type="button" role="radio" data-show="' + x[0] + '" aria-checked="' + (x[0] === cfg.show) + '">' + x[1] + "</button>"; }).join("") +
+        "</div></div>" +
+        '<div class="wm-preview"><iframe title="ウィジェットの見本" tabindex="-1"></iframe></div>' +
+        '<p class="wm-meta" aria-live="polite">作っています…</p>' +
+        '<button type="button" class="imp-btn wm-copy" data-copy disabled>リンクをコピー</button>' +
+        (navigator.share ? '<button type="button" class="sheet-btn" data-share disabled>共有…</button>' : "") +
+        '<button type="button" class="sheet-btn" data-close>閉じる</button>' +
+        '<p class="imp-note">このリンクには選んだ範囲の例文が入っています。自分のウィジェット以外には貼らないでください。</p>' +
+      "</div>";
+    document.body.appendChild(sheet);
+    requestAnimationFrame(function () { sheet.classList.add("open"); });
+
+    var marks = window.DuoMarks(pack.duo).marks;
+    var $meta = sheet.querySelector(".wm-meta"), $copy = sheet.querySelector("[data-copy]"), $share = sheet.querySelector("[data-share]");
+    var $preview = sheet.querySelector(".wm-preview"), $frame = $preview.querySelector("iframe");
+    var link = "", timer, ticket = 0;
+
+    function scalePreview() { $preview.style.setProperty("--wk", $preview.clientWidth / 338); }
+    function rebuild() {
+      var from = Math.round(+sheet.querySelector('[data-k="from"]').value), to = Math.round(+sheet.querySelector('[data-k="to"]').value);
+      if (!(from >= 1 && to <= N && from <= to)) {
+        link = ""; $copy.disabled = true; if ($share) $share.disabled = true;
+        $meta.className = "wm-meta error"; $meta.textContent = "範囲は 1〜" + N + " で、左を右以下にしてください";
+        return;
+      }
+      cfg.from = from; cfg.to = to;
+      try { localStorage.setItem("duo.widget", JSON.stringify(cfg)); } catch (e) {}
+      if (!window.CompressionStream) { $meta.className = "wm-meta error"; $meta.textContent = "この端末では作れません（iOS 16.4 以降が必要です）"; return; }
+      var my = ++ticket;
+      $meta.className = "wm-meta"; $meta.textContent = "作っています…";
+      widgetLink(pack, marks, from, to, cfg.show).then(function (url) {
+        if (my !== ticket) return;
+        link = url;
+        $frame.src = url;
+        $copy.disabled = false; if ($share) $share.disabled = false;
+        $meta.textContent = (to - from + 1) + " 文 · リンク " + url.length.toLocaleString("ja-JP") + " 文字";
+      });
+    }
+    function close() {
+      sheet.classList.remove("open");
+      setTimeout(function () { sheet.remove(); }, 300);
+    }
+    function copy() {
+      // コピーはタップの中で行う必要があるので、リンクは前もって作っておく
+      var done = function () { $copy.textContent = "コピーしました"; setTimeout(function () { $copy.textContent = "リンクをコピー"; }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(done, fallback);
+      } else fallback();
+      function fallback() {
+        var ta = document.createElement("textarea");
+        ta.value = link; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, link.length);
+        try { document.execCommand("copy"); done(); } catch (e) {}
+        ta.remove();
+      }
+    }
+
+    sheet.addEventListener("input", function (e) {
+      if (!e.target.classList.contains("wm-num")) return;
+      clearTimeout(timer);
+      timer = setTimeout(rebuild, 350);
+    });
+    sheet.addEventListener("click", function (e) {
+      var b;
+      if (e.target === sheet || e.target.closest("[data-close]")) return close();
+      if ((b = e.target.closest("[data-show]"))) {
+        cfg.show = b.dataset.show;
+        sheet.querySelectorAll("[data-show]").forEach(function (x, i) {
+          x.setAttribute("aria-checked", String(x === b));
+          if (x === b) sheet.querySelector(".wm-seg").style.setProperty("--k", i);
+        });
+        return rebuild();
+      }
+      if (e.target.closest("[data-copy]") && link) return copy();
+      if (e.target.closest("[data-share]") && link) navigator.share({ url: link }).catch(function () {});
+    });
+    scalePreview();
+    window.addEventListener("resize", scalePreview);
+    rebuild();
   }
 
   // ---------- 圏外でも開けるようにする（Service Worker） ----------
