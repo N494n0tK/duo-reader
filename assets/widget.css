@@ -1,23 +1,28 @@
 /* ホーム画面ウィジェット（4×2）。アプリと同じ光とガラスで、1枚のカードに1文。 */
 
+/* ウィジェットアプリがどんな大きさでページを開いても、上端に 4×2（338:158）の横長の帯を作ってその中に収める。
+   大きさはすべて --u（帯の高さ ÷ 158）の倍数。--u・--wg-w・--wg-h は widget.js が入れる。 */
+:root { --u: 1px; --wg-w: 338px; --wg-h: 158px; }
 html, body { height: 100%; overflow: hidden; }
 body.widget { background: var(--bg); }
 /* ウィジェットは静止画として撮られるので、動きは止めて完成した状態で見せる */
-.widget .ambient i { animation: none; filter: blur(40px); }
-.widget .ambient i:nth-child(1) { top: -38vmax; right: -20vmax; }
-.widget .ambient i:nth-child(2) { bottom: -40vmax; left: -24vmax; }
+.widget .ambient { inset: auto; top: 0; left: 0; width: var(--wg-w); height: var(--wg-h); }
+.widget .ambient i { animation: none; filter: blur(calc(var(--u) * 40)); width: calc(var(--wg-w) * .62); height: calc(var(--wg-w) * .62); }
+.widget .ambient i:nth-child(1) { top: calc(var(--wg-w) * -.38); right: calc(var(--wg-w) * -.2); }
+.widget .ambient i:nth-child(2) { top: auto; bottom: calc(var(--wg-w) * -.4); left: calc(var(--wg-w) * -.24); }
+.widget .ambient i:nth-child(3) { width: calc(var(--wg-w) * .4); height: calc(var(--wg-w) * .4); top: 30%; left: 38%; }
 .widget .hl { animation: none; --draw: 1; --h: 40%; cursor: default; }
 
-.wg { position: fixed; inset: 0; display: flex; padding: max(6px, 3.2vmin); }
+.wg { position: fixed; top: 0; left: 0; width: var(--wg-w); height: var(--wg-h); display: flex; padding: calc(var(--u) * 6); }
 .wg-card {
   --fs: 16px;
   position: relative; flex: 1; min-width: 0; min-height: 0;
   display: flex; flex-direction: column;
-  padding: max(10px, 6.5vmin) max(12px, 4.6vw) max(10px, 6vmin);
-  border-radius: max(16px, 11vmin);
+  padding: calc(var(--u) * 10.3) calc(var(--u) * 15.5) calc(var(--u) * 10);
+  border-radius: calc(var(--u) * 17.4);
   background: var(--glass);
-  -webkit-backdrop-filter: blur(26px) saturate(175%); backdrop-filter: blur(26px) saturate(175%);
-  box-shadow: var(--glass-inset), var(--glass-shadow);
+  -webkit-backdrop-filter: blur(calc(var(--u) * 26)) saturate(175%); backdrop-filter: blur(calc(var(--u) * 26)) saturate(175%);
+  box-shadow: var(--glass-inset), 0 calc(var(--u) * 10) calc(var(--u) * 30) rgba(0, 0, 0, .45);
 }
 .wg-card::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
@@ -27,12 +32,12 @@ body.widget { background: var(--bg); }
   opacity: .7;
 }
 
-.wg-head { flex: none; display: flex; align-items: baseline; gap: max(4px, 1.6vw); }
-.wg-num { font: italic 400 clamp(15px, 13vmin, 30px)/1 var(--serif); color: var(--marker); }
-.wg-of { font: clamp(8px, 5vmin, 12px) var(--mono); color: var(--faint); }
-.wg-time { margin-left: auto; font: clamp(8px, 5vmin, 12px) var(--mono); color: var(--faint); }
+.wg-head { flex: none; display: flex; align-items: baseline; gap: calc(var(--u) * 5.4); }
+.wg-num { font: italic 400 calc(var(--u) * 20.5)/1 var(--serif); color: var(--marker); }
+.wg-of, .wg-time { font: calc(var(--u) * 8) var(--mono); color: var(--faint); }
+.wg-time { margin-left: auto; }
 .wg-brand {
-  font: italic 600 clamp(11px, 8vmin, 18px)/1 var(--serif); padding: 0 2px; margin-left: max(4px, 1.6vw);
+  font: italic 600 calc(var(--u) * 12.6)/1 var(--serif); padding: 0 calc(var(--u) * 2); margin-left: calc(var(--u) * 5.4);
   background: linear-gradient(var(--marker-strong), var(--marker-strong)) no-repeat 0 88% / 100% 38%;
 }
 .wg-msg .wg-brand { margin-left: 0; }
@@ -42,5 +47,5 @@ body.widget { background: var(--bg); }
 .wg-en { margin: 0; font: 400 var(--fs)/1.38 var(--serif); overflow-wrap: break-word; }
 .wg-ja { margin: .5em 0 0; font-size: calc(var(--fs) * .64); line-height: 1.5; color: var(--muted); }
 .wg-ja.solo { margin: 0; font-size: calc(var(--fs) * .84); line-height: 1.55; color: var(--text); }
-.wg-msg-title { margin: 0 0 .3em; font-size: clamp(12px, 8vmin, 17px); font-weight: 600; }
-.wg-msg-body { margin: 0; font-size: clamp(10px, 6vmin, 13px); line-height: 1.5; color: var(--muted); }
+.wg-msg-title { margin: 0 0 .3em; font-size: calc(var(--u) * 12.6); font-weight: 600; }
+.wg-msg-body { margin: 0; font-size: calc(var(--u) * 10); line-height: 1.5; color: var(--muted); }

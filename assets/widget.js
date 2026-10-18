@@ -132,16 +132,30 @@
     setTimeout(function () { render(data); }, next - now);
   }
 
+  // ウィジェットアプリがスマホ画面ほどの縦長でページを開いても、上端の 4×2（338:158）の帯に収める
+  function layout() {
+    var W = window.innerWidth, H = Math.min(window.innerHeight, W * 158 / 338), root = document.documentElement.style;
+    root.setProperty("--wg-w", W + "px");
+    root.setProperty("--wg-h", H + "px");
+    root.setProperty("--u", (H / 158).toFixed(4) + "px");
+  }
+
   // 文の長さに合わせて、枠に収まるいちばん大きな文字にする
   function fit() {
-    var card = $wg.querySelector(".wg-card"), body = card.querySelector(".wg-body"), text = card.querySelector(".wg-text");
-    var size = Math.min(window.innerWidth * 0.07, window.innerHeight * 0.17);
+    layout();
+    var card = $wg.querySelector(".wg-card");
+    if (!card) return;
+    var body = card.querySelector(".wg-body"), text = card.querySelector(".wg-text");
+    var box = $wg.getBoundingClientRect();
+    var size = Math.min(box.width * 0.07, box.height * 0.17);
     for (var i = 0; i < 80; i++) {
       card.style.setProperty("--fs", size.toFixed(2) + "px");
       if (text.offsetHeight <= body.clientHeight || size <= 7) break;
       size *= 0.95;
     }
   }
+
+  layout();
 
   function message(title, body) {
     $wg.innerHTML = '<article class="wg-card wg-msg"><header class="wg-head"><span class="wg-brand">DUO</span></header>' +
@@ -158,6 +172,7 @@
     if (!data) return message("例文データがありません", "DUO アプリの「データ」→「ウィジェット用のリンクを作る」で作ったリンクを貼ってください。");
     if (!data.items.length) return message("範囲に例文がありません", "範囲の番号を確かめてください。");
     render(data);
+  }).then(function () {
     window.addEventListener("resize", fit);
   }).catch(function () {
     message("表示できませんでした", "リンクが途中で切れていないか確かめてください。");
