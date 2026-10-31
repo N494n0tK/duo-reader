@@ -83,7 +83,7 @@
     var old = document.querySelector(".importer");
     if (old) old.remove();
     var s = document.createElement("script");
-    s.src = "assets/app.js?v=b1ba44f8d2";
+    s.src = "assets/app.js?v=8f8c1c3e06";
     document.body.appendChild(s);
     setupDataButton(pack);
   }
@@ -227,9 +227,21 @@
     }
     return out;
   }
-  function widgetLink(pack, marks, from, to, show) {
-    var items = pack.duo.sentences.filter(function (s) { return s.id >= from && s.id <= to; }).map(function (s) {
-      return [s.id, show === "ja" ? "" : s.en, show === "en" ? "" : s.ja, show === "ja" ? [] : spans(marks(s.id))];
+  // アプリで付けた例文の色（この端末の中だけ）。n = 色なし
+  function sentenceColors() {
+    try { return JSON.parse(localStorage.getItem("duo.colors") || "{}") || {}; } catch (e) { return {}; }
+  }
+  function pickSentences(pack, from, to, want) {
+    var colors = sentenceColors();
+    return pack.duo.sentences.filter(function (s) {
+      return s.id >= from && s.id <= to && want.indexOf(colors[s.id] || "n") > -1;
+    }).map(function (s) { return { s: s, c: colors[s.id] || "" }; });
+  }
+  function widgetLink(pack, marks, picked, from, to, show) {
+    var items = picked.map(function (x) {
+      var s = x.s, item = [s.id, show === "ja" ? "" : s.en, show === "en" ? "" : s.ja, show === "ja" ? [] : spans(marks(s.id))];
+      if (x.c) item.push(x.c);
+      return item;
     });
     var json = JSON.stringify({ v: 1, n: pack.duo.sentences.length, from: from, to: to, show: show, s: items });
     var base = location.href.split("#")[0].split("?")[0].replace(/[^/]*$/, "") + "widget.html";
@@ -239,8 +251,9 @@
   function openWidgetMaker(pack) {
     var N = pack.duo.sentences.length, saved = {};
     try { saved = JSON.parse(localStorage.getItem("duo.widget") || "{}"); } catch (e) {}
-    var cfg = { from: saved.from || 1, to: saved.to || N, show: saved.show || "both" };
+    var cfg = { from: saved.from || 1, to: saved.to || N, show: saved.show || "both", colors: Array.isArray(saved.colors) && saved.colors.length ? saved.colors : ["n", "r", "y", "g"] };
     var SHOW = [["en", "英語"], ["ja", "日本語"], ["both", "両方"]];
+    var TINTS = [["n", "色なし"], ["r", "赤"], ["y", "黄"], ["g", "緑"]];
     var sheet = document.createElement("div");
     sheet.className = "data-sheet";
     sheet.innerHTML =
@@ -255,12 +268,18 @@
           SHOW.findIndex(function (x) { return x[0] === cfg.show; }) + '"><span class="wm-thumb" aria-hidden="true"></span>' +
           SHOW.map(function (x) { return '<button type="button" role="radio" data-show="' + x[0] + '" aria-checked="' + (x[0] === cfg.show) + '">' + x[1] + "</button>"; }).join("") +
         "</div></div>" +
+        '<div class="wm-row"><span class="wm-label">色</span><div class="wm-colors" role="group" aria-label="出す例文の色">' +
+          TINTS.map(function (x) {
+            return '<button type="button" class="wm-color" data-want="' + x[0] + '"' + (x[0] !== "n" ? ' data-color="' + x[0] + '"' : "") +
+              ' aria-pressed="' + (cfg.colors.indexOf(x[0]) > -1) + '"><i class="cdot" aria-hidden="true"></i>' + x[1] + "</button>";
+          }).join("") +
+        "</div></div>" +
         '<div class="wm-preview"><iframe title="ウィジェットの見本" tabindex="-1"></iframe></div>' +
         '<p class="wm-meta" aria-live="polite">作っています…</p>' +
         '<button type="button" class="imp-btn wm-copy" data-copy disabled>リンクをコピー</button>' +
         (navigator.share ? '<button type="button" class="sheet-btn" data-share disabled>共有…</button>' : "") +
         '<button type="button" class="sheet-btn" data-close>閉じる</button>' +
-        '<p class="imp-note">このリンクには選んだ範囲の例文が入っています。自分のウィジェット以外には貼らないでください。</p>' +
+        '<p class="imp-note">色を付け直したら、リンクを作り直して貼り直してください（ウィジェットからはアプリの色が見えないため）。このリンクには選んだ範囲の例文が入っています。自分のウィジェット以外には貼らないでください。</p>' +
       "</div>";
     document.body.appendChild(sheet);
     requestAnimationFrame(function () { sheet.classList.add("open"); });
@@ -281,14 +300,20 @@
       cfg.from = from; cfg.to = to;
       try { localStorage.setItem("duo.widget", JSON.stringify(cfg)); } catch (e) {}
       if (!window.CompressionStream) { $meta.className = "wm-meta error"; $meta.textContent = "この端末では作れません（iOS 16.4 以降が必要です）"; return; }
+      var picked = pickSentences(pack, from, to, cfg.colors);
+      if (!picked.length) {
+        link = ""; $copy.disabled = true; if ($share) $share.disabled = true;
+        $meta.className = "wm-meta error"; $meta.textContent = "この範囲に、選んだ色の例文がありません";
+        return;
+      }
       var my = ++ticket;
       $meta.className = "wm-meta"; $meta.textContent = "作っています…";
-      widgetLink(pack, marks, from, to, cfg.show).then(function (url) {
+      widgetLink(pack, marks, picked, from, to, cfg.show).then(function (url) {
         if (my !== ticket) return;
         link = url;
         $frame.src = url;
         $copy.disabled = false; if ($share) $share.disabled = false;
-        $meta.textContent = (to - from + 1) + " 文 · リンク " + url.length.toLocaleString("ja-JP") + " 文字";
+        $meta.textContent = picked.length + " 文 · リンク " + url.length.toLocaleString("ja-JP") + " 文字";
       });
     }
     function close() {
@@ -323,6 +348,15 @@
         sheet.querySelectorAll("[data-show]").forEach(function (x, i) {
           x.setAttribute("aria-checked", String(x === b));
           if (x === b) sheet.querySelector(".wm-seg").style.setProperty("--k", i);
+        });
+        return rebuild();
+      }
+      if ((b = e.target.closest("[data-want]"))) {
+        var on = b.getAttribute("aria-pressed") !== "true";
+        if (!on && cfg.colors.length === 1) return; // at least one color stays on
+        b.setAttribute("aria-pressed", String(on));
+        cfg.colors = TINTS.map(function (x) { return x[0]; }).filter(function (k) {
+          return sheet.querySelector('[data-want="' + k + '"]').getAttribute("aria-pressed") === "true";
         });
         return rebuild();
       }

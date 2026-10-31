@@ -28,6 +28,11 @@
   --ok: #4fd6bd;
   --fix: #ff8f7d;
 
+  /* the learner's three sentence colors */
+  --c-r: #ff7a8c;
+  --c-y: #ffc35a;
+  --c-g: #56dba4;
+
   --blob-1: #f2b93b;
   --blob-2: #6f5cff;
   --blob-3: #17b3a3;
@@ -72,6 +77,10 @@
   --ok: #0f9a83;
   --fix: #d4513c;
 
+  --c-r: #ec4f6b;
+  --c-y: #eba21c;
+  --c-g: #17ad72;
+
   --blob-1: #ffc94d;
   --blob-2: #9d8cff;
   --blob-3: #5fd6c8;
@@ -81,6 +90,7 @@
 
 @property --draw { syntax: "<number>"; inherits: false; initial-value: 0; }
 @property --h { syntax: "<percentage>"; inherits: false; initial-value: 42%; }
+@property --tint { syntax: "<color>"; inherits: true; initial-value: transparent; }
 
 /* ===== Base ===== */
 * { box-sizing: border-box; }
@@ -201,6 +211,31 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .search-clear:active { transform: scale(.85); }
 .search-clear[hidden] { display: none; }
 
+/* recent searches: drop down under the empty search field */
+.recent {
+  position: absolute; z-index: 7; top: calc(100% + 8px); left: 0; right: 0;
+  padding: 4px 6px 6px; border-radius: 24px;
+  background: var(--glass); background-color: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: blur(26px) saturate(180%); backdrop-filter: blur(26px) saturate(180%);
+  box-shadow: var(--glass-inset), var(--glass-shadow), 0 0 0 1px var(--glass-edge-b);
+  transform-origin: 50% 0;
+  animation: recent-in .55s var(--spring) both;
+}
+.recent[hidden] { display: none; }
+.recent-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 2px 12px; font: 11px var(--mono); color: var(--faint); letter-spacing: .04em; }
+.recent-head button { font: 12px var(--sans); color: var(--muted); padding: 4px 8px; border-radius: 999px; }
+.recent-head button:active { background: var(--glass-hover); }
+.recent-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 16px;
+  text-align: left; font-size: 15px; color: var(--text);
+  animation: rise .4s var(--ease) both; animation-delay: calc(var(--i, 0) * 22ms);
+}
+.recent-item + .recent-item { box-shadow: 0 -1px 0 var(--line); }
+.recent-item:hover, .recent-item:active { background: var(--glass-hover); box-shadow: none; }
+.recent-item svg { flex: none; width: 16px; height: 16px; color: var(--faint); }
+.recent-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes recent-in { from { opacity: 0; transform: translateY(-8px) scale(.96, .7); } }
+
 /* ===== Segmented tabs with a liquid thumb ===== */
 .tabs {
   position: relative;
@@ -237,6 +272,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 }
 .chip:hover { color: var(--text); background: var(--glass-hover); }
 .chip[aria-pressed="true"] { background: var(--marker-soft); color: var(--text); box-shadow: var(--glass-inset), 0 0 0 1px var(--marker-soft); }
+.chip-color { font-family: var(--mono); }
+.chip-color[aria-pressed="true"] { background: color-mix(in srgb, var(--tint) 26%, transparent); box-shadow: var(--glass-inset), 0 0 0 1px color-mix(in srgb, var(--tint) 55%, transparent); }
 
 /* ===== Results ===== */
 .results {
@@ -328,9 +365,55 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .detail.swiping .sentence-card, .detail.swiping .headword, .detail.swiping .ety-card { transition: none; }
 .detail.settled .headword, .detail.settled .ety-card { transform: translateX(calc(var(--sx, 0px) * .55)); }
 
-/* floating dock and sentence search (phones only) */
+/* floating dock, sentence search and position gauge (phones only) */
 .dock { display: none; }
 .seek { display: none; }
+.gauge { display: none; }
+
+/* this sentence's color: a glass drop that pours down into the three colors and "none" */
+.tint { position: relative; flex: none; width: 38px; height: 38px; z-index: 6; }
+.tint-cap {
+  position: absolute; top: 0; left: 0; width: 100%; border-radius: 19px; overflow: hidden;
+  background: var(--glass-flat); box-shadow: var(--glass-inset);
+  transition: background-color .35s var(--ease), box-shadow .35s var(--ease);
+}
+.tint.open .tint-cap {
+  background: var(--glass); background-color: color-mix(in srgb, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(185%); backdrop-filter: blur(24px) saturate(185%);
+  box-shadow: var(--glass-inset), var(--glass-shadow), 0 0 0 1px var(--glass-edge-b);
+}
+.tint-btn { display: grid; place-items: center; width: 100%; height: 38px; color: var(--muted); transition: color .2s, transform .35s var(--spring); }
+.tint-btn:active { transform: scale(.88); }
+.tint-btn .drop { fill: color-mix(in srgb, var(--tint) 92%, transparent); stroke: currentColor; transition: --tint .6s var(--ease); }
+.tint[data-color] .tint-btn { color: var(--tint); filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tint) 70%, transparent)); }
+.tint[data-color] .tint-btn .drop { stroke: color-mix(in srgb, var(--tint) 60%, var(--text)); }
+.tint-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .62s cubic-bezier(.3, 1.28, .45, 1); }
+.tint.open .tint-panel { grid-template-rows: 1fr; }
+.tint-list { min-height: 0; overflow: hidden; display: grid; justify-items: center; gap: 10px; }
+.tint-list .sw:first-child { margin-top: 4px; }
+.tint-list .sw:last-child { margin-bottom: 10px; }
+.tint-list .sw { opacity: 0; transform: translateY(-10px) scale(.4); transition: opacity .25s var(--ease), transform .55s var(--spring), box-shadow .3s; }
+.tint.open .tint-list .sw { opacity: 1; transform: none; }
+.tint.open .tint-list .sw:nth-child(2) { transition-delay: .04s; }
+.tint.open .tint-list .sw:nth-child(3) { transition-delay: .08s; }
+.tint.open .tint-list .sw:nth-child(4) { transition-delay: .12s; }
+.tint.open .tint-list .sw:active { transform: scale(.82); }
+
+/* list: a row swiped to the right shows colored glass on the left */
+.swipe-tray {
+  --t: 0;
+  position: absolute; z-index: 0;
+  display: flex; align-items: center; justify-content: space-evenly; padding: 0 8px;
+  border-radius: 22px;
+  background: var(--pane); box-shadow: var(--glass-inset);
+  opacity: calc(var(--t) * 1.6);
+}
+.swipe-tray .sw { width: 34px; height: 34px; transform: scale(calc(.45 + var(--t) * .55)); transition: transform .5s var(--spring), box-shadow .3s; }
+.swipe-tray.open .sw { transform: none; }
+.swipe-tray.open .sw:active { transform: scale(.82); }
+.results .row { z-index: 1; }
+.row.swiping { transition: none; }
+.row.swiping:active { transform: none; }
 .dock-num, .card-num { cursor: pointer; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
 
 /* number dial: rises out of the dock */
@@ -561,9 +644,48 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 @keyframes from-right { from { opacity: 0; transform: translateX(48px) scale(.985); } to { opacity: 1; transform: none; } }
 @keyframes from-left { from { opacity: 0; transform: translateX(-48px) scale(.985); } to { opacity: 1; transform: none; } }
 
-/* ===== Hide-Japanese study mode ===== */
-.hide-ja .ja { filter: blur(7px); cursor: pointer; transition: filter .3s var(--ease); user-select: none; }
-.hide-ja .ja.shown { filter: none; user-select: auto; }
+/* ===== Hide-Japanese / hide-English study modes ===== */
+.hide-ja .ja, .hide-en .en { filter: blur(7px); cursor: pointer; transition: filter .3s var(--ease); user-select: none; }
+.hide-ja .ja.shown, .hide-en .en.shown { filter: none; user-select: auto; }
+
+/* the example sentence clears word by word: each word is a soft glow of its own color until it is cleared */
+.sentence-en { --wd-c: var(--text); }
+.sentence-ja { --wd-c: var(--muted); }
+.rv .wd {
+  --b: 0;
+  color: color-mix(in srgb, var(--wd-c) calc((1 - var(--b)) * 100%), transparent);
+  text-shadow: 0 0 calc(var(--b) * 11px) color-mix(in srgb, var(--wd-c) calc(var(--b) * 90%), transparent);
+  transition: color .45s var(--ease), text-shadow .55s var(--ease);
+  -webkit-user-select: none; user-select: none;
+}
+.rv .wd[style*="--b: 1"], .rv .wd[style*="--b:1"] { cursor: pointer; }
+
+/* ===== Sentence colors: tinted glass ===== */
+[data-color="r"] { --tint: var(--c-r); }
+[data-color="y"] { --tint: var(--c-y); }
+[data-color="g"] { --tint: var(--c-g); }
+.sentence-card::after, .row::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(140deg, color-mix(in srgb, var(--tint) 30%, transparent), color-mix(in srgb, var(--tint) 9%, transparent) 55%, color-mix(in srgb, var(--tint) 18%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 42%, transparent), 0 0 26px -6px color-mix(in srgb, var(--tint) 50%, transparent);
+  transition: --tint .6s var(--ease);
+}
+.row { position: relative; isolation: isolate; }
+.cdot { display: inline-block; width: 9px; height: 9px; margin-right: 6px; border-radius: 50%; background: var(--tint); box-shadow: 0 0 8px var(--tint); vertical-align: 0; }
+
+/* a color swatch: a small drop of colored glass */
+.sw {
+  position: relative; width: 30px; height: 30px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, .78), rgba(255, 255, 255, 0) 44%), var(--tint);
+  box-shadow: 0 0 14px -2px var(--tint), inset 0 -3px 6px rgba(0, 0, 0, .2), inset 0 0 0 1px rgba(255, 255, 255, .25);
+  transition: transform .45s var(--spring), box-shadow .3s;
+  touch-action: manipulation;
+}
+.sw:active { transform: scale(.82); }
+.sw[data-tint=""] { background: transparent; box-shadow: inset 0 0 0 1.5px var(--faint); }
+.sw[data-tint=""]::after { content: ""; position: absolute; left: 50%; top: 6px; bottom: 6px; width: 1.5px; margin-left: -.75px; background: var(--faint); transform: rotate(45deg); border-radius: 2px; }
+.sw[aria-checked="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--text), 0 0 16px -2px var(--tint); }
+.sw[data-tint=""][aria-checked="true"] { box-shadow: inset 0 0 0 1.5px var(--faint), 0 0 0 2px var(--bg), 0 0 0 3.5px var(--text); }
 
 /* ===== Mobile: floating glass over the light, like iOS ===== */
 @media (max-width: 860px) {
@@ -658,14 +780,14 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .detail-top.seeking { z-index: 8; } /* results lie over the dock */
   .detail-top .eyebrow, .detail-top .spacer, .detail-top [data-go], .detail-top [data-shuffle] { display: none; }
   .nav-btn.back { display: grid; }
-  .detail-top .nav-btn.back, .seek {
+  .detail-top .nav-btn.back, .seek, .gauge, .tint-cap {
     position: relative;
     background: var(--glass); background-color: color-mix(in srgb, var(--bg) 30%, transparent);
     -webkit-backdrop-filter: blur(24px) saturate(185%); backdrop-filter: blur(24px) saturate(185%);
     box-shadow: var(--glass-inset), var(--glass-shadow);
   }
   .detail-top .nav-btn.back { width: 46px; height: 46px; color: var(--text); }
-  .detail-top .nav-btn.back::before, .seek::before {
+  .detail-top .nav-btn.back::before, .seek::before, .gauge::before, .tint-cap::before {
     content: ""; position: absolute; inset: 0; z-index: 3; border-radius: inherit; padding: 1px; pointer-events: none;
     background: linear-gradient(140deg, var(--glass-edge-a), var(--glass-edge-b) 32%, var(--glass-edge-b) 68%, var(--glass-edge-a));
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -675,9 +797,94 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .seek {
     display: block; position: absolute; top: 0; left: 56px; z-index: 2;
     width: 46px; border-radius: 23px; overflow: hidden;
-    transition: width .62s cubic-bezier(.3, 1.28, .45, 1), border-radius .45s var(--ease), background-color .35s var(--ease);
+    transition: width .62s cubic-bezier(.3, 1.28, .45, 1), border-radius .45s var(--ease), background-color .35s var(--ease),
+      opacity .25s var(--ease), transform .45s var(--spring);
   }
   .seek.open { width: calc(100% - 56px); }
+  /* while one of them is open, the others step back */
+  .detail-top .nav-btn.back { transition: transform .45s var(--spring), opacity .25s var(--ease), background-color .2s, color .2s; }
+  .detail-top.seeking .gauge, .detail-top.seeking .tint,
+  .detail-top.gauging .nav-btn.back, .detail-top.gauging .seek, .detail-top.gauging .tint,
+  .detail-top.tinting .gauge { opacity: 0; transform: scale(.86); pointer-events: none; }
+  .detail-top.gauging, .detail-top.tinting { z-index: 8; }
+
+  /* the position gauge: a glass bar between the magnifier and the color drop */
+  .gauge {
+    display: block; position: absolute; top: 0; left: 112px; right: 56px; z-index: 1;
+    border-radius: 23px; overflow: hidden;
+    transition: left .62s cubic-bezier(.3, 1.28, .45, 1), right .62s cubic-bezier(.3, 1.28, .45, 1), border-radius .45s var(--ease),
+      background-color .35s var(--ease), opacity .25s var(--ease), transform .45s var(--spring);
+  }
+  .gauge.open { left: 0; right: 0; z-index: 3; border-radius: 28px; background-color: color-mix(in srgb, var(--bg) 70%, transparent); }
+  .gauge-bar { position: relative; display: block; width: 100%; height: 46px; }
+  .gauge-bar:active .gauge-cursor { transform: scaleY(1.25); }
+  .gauge-track {
+    position: absolute; left: 18px; right: 18px; top: 13px; height: 20px;
+    background:
+      linear-gradient(var(--line), var(--line)) 0 50% / 100% 1px no-repeat,
+      repeating-linear-gradient(90deg, var(--faint) 0 1px, transparent 1px calc(100% / 5.59)) 0 50% / 100% 10px no-repeat;
+    transition: opacity .25s var(--ease);
+  }
+  .gauge-strip { position: absolute; left: 0; bottom: -3px; width: 100%; height: 7px; stroke: none; }
+  .gs-r { fill: var(--c-r); } .gs-y { fill: var(--c-y); } .gs-g { fill: var(--c-g); }
+  .gauge-cursor {
+    position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; border-radius: 4px;
+    left: calc(var(--p) * 100%);
+    background: var(--marker); box-shadow: 0 0 14px var(--marker), 0 0 3px var(--marker);
+    transition: left .8s var(--spring), transform .3s var(--spring);
+  }
+  .gauge-head {
+    position: absolute; inset: 0 48px 0 18px; display: flex; align-items: baseline; gap: 7px; padding-top: 12px;
+    opacity: 0; transition: opacity .2s var(--ease); pointer-events: none;
+  }
+  .gauge-num { font: italic 400 22px/1 var(--serif); color: var(--marker); }
+  .gauge-of, .gauge-range { font: 11px var(--mono); color: var(--faint); }
+  .gauge-range { margin-left: auto; color: var(--muted); }
+  .gauge-close { position: absolute; top: 0; right: 0; width: 46px; height: 46px; display: grid; place-items: center; color: var(--muted); opacity: 0; pointer-events: none; transition: opacity .2s var(--ease); }
+  .gauge.open .gauge-track { opacity: 0; }
+  .gauge.open .gauge-head, .gauge.open .gauge-close { opacity: 1; transition-delay: .1s; }
+  .gauge.open .gauge-close { pointer-events: auto; }
+  .gauge-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .62s var(--spring); }
+  .gauge.open .gauge-panel { grid-template-rows: 1fr; }
+  .gauge-body { min-height: 0; overflow: hidden; padding: 0 14px; }
+  .gauge-peek {
+    height: 3em; margin: 2px 2px 10px; font-size: 13px; line-height: 1.5; color: var(--muted);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .gauge-peek.en { font: 15px/1.5 var(--serif); color: var(--text); }
+  .gauge-blocks {
+    display: grid; grid-template-columns: repeat(28, minmax(0, 1fr)); gap: 3px; height: 34px; padding: 4px;
+    border-radius: 14px; background: var(--well); box-shadow: inset 0 2px 6px rgba(0, 0, 0, .16);
+    touch-action: none; cursor: pointer;
+  }
+  .gauge-blocks i { position: relative; border-radius: 5px; background: var(--glass-flat); transition: background-color .2s, transform .4s var(--spring), box-shadow .2s; }
+  .gauge-blocks i.cur::after { content: ""; position: absolute; left: 50%; bottom: 3px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: var(--marker); }
+  .gauge-blocks i.sel { background: var(--marker); box-shadow: 0 0 10px var(--marker-strong); transform: scaleY(1.12); }
+  .gauge-blocks i.sel.cur::after { background: #141726; }
+  .gauge-scale { display: flex; justify-content: space-between; margin: 4px 4px 10px; font: 10px var(--mono); color: var(--faint); }
+  .gauge-cells { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 5px; margin-bottom: 14px; touch-action: none; }
+  .gauge-cells button {
+    position: relative; isolation: isolate; height: 40px; border-radius: 12px;
+    background: var(--pane); box-shadow: var(--glass-inset);
+    font: 11.5px var(--mono); color: var(--muted);
+    transition: transform .4s var(--spring), background-color .2s, color .2s;
+  }
+  .gauge-cells button::after {
+    content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+    background: color-mix(in srgb, var(--tint) 34%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 60%, transparent);
+  }
+  .gauge-cells button[aria-current="true"] { color: var(--marker); box-shadow: var(--glass-inset), inset 0 0 0 1.5px var(--marker); }
+  .gauge-cells button.hot { transform: scale(1.14); color: var(--text); background: var(--glass-hover); z-index: 1; box-shadow: var(--glass-inset), 0 6px 16px rgba(0, 0, 0, .3); }
+
+  /* the color drop sits at the right end; it pours down when tapped */
+  .tint { position: absolute; top: 0; right: 0; width: 46px; height: 46px; z-index: 2; transition: opacity .25s var(--ease), transform .45s var(--spring); }
+  .tint-cap { position: absolute; border-radius: 23px; }
+  .tint-btn { height: 46px; color: var(--text); }
+  .tint.open .tint-cap { border-radius: 23px; background-color: color-mix(in srgb, var(--bg) 62%, transparent); }
+  .tint-list { gap: 12px; }
+  .tint-list .sw:first-child { margin-top: 2px; }
+  .tint-list .sw:last-child { margin-bottom: 12px; }
+  .tint-list .sw { width: 32px; height: 32px; }
   .seek.has-results { border-radius: 26px; background-color: color-mix(in srgb, var(--bg) 66%, transparent); }
   .seek-bar { display: flex; align-items: center; height: 46px; }
   .seek-btn { flex: none; width: 46px; height: 46px; display: grid; place-items: center; color: var(--text); transition: color .3s, transform .35s var(--spring); }
@@ -714,8 +921,13 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .seek-ja { font-size: 12.5px; line-height: 1.5; color: var(--muted); }
   .seek mark.q { background: var(--marker-soft); color: inherit; border-radius: 4px; }
   .seek-note { margin: 0; padding: 14px 12px; text-align: center; font-size: 13px; color: var(--muted); }
-  .rail { height: 44px; margin: 24px 4px 26px; }
-  .rail-label { top: -12px; }
+  .seek-cap { margin: 0; padding: 8px 12px 4px; font: 11px var(--mono); color: var(--faint); letter-spacing: .04em; }
+  .seek-recent { align-items: center; }
+  .seek-recent .seek-num { display: grid; justify-items: end; color: var(--faint); }
+  .seek-recent .seek-num svg { width: 16px; height: 16px; }
+  .seek-recent .seek-en { font: 15px/1.5 var(--sans); }
+  .rail { display: none; }
+  .detail-top { margin-bottom: 22px; }
   .headword { margin: 0 6px 24px; }
   .sentence-card { padding: 22px 20px 24px; border-radius: 28px; }
   .card-num { font-size: 26px; }
@@ -741,10 +953,37 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
     -webkit-mask-composite: xor; mask-composite: exclude;
     opacity: .8;
   }
+  .dock { touch-action: none; -webkit-user-select: none; user-select: none; }
   .dock .nav-btn { width: 48px; height: 48px; background: transparent; box-shadow: none; color: var(--text); }
   .dock .nav-btn:active:not(:disabled) { background: var(--glass-hover); transform: scale(.9); }
+  .dock .nav-btn > span { grid-area: 1 / 1; display: grid; place-items: center; transition: opacity .25s var(--ease), transform .5s var(--spring); }
+  .dock .dk-rv { opacity: 0; transform: scale(.4) rotate(-30deg); color: var(--marker); }
+  .dock.reveal .dk-nav { opacity: 0; transform: scale(.4); }
+  .dock.reveal .dk-rv { opacity: 1; transform: none; }
+  .dock .dk-rv svg { width: 22px; height: 22px; stroke-width: 2.2; }
+  .dock-num .dk-prog { display: none; }
+  .dock.reveal .dk-of { display: none; }
+  .dock.reveal .dk-prog { display: inline; }
+  /* how much of the hidden sentence is clear */
+  .dk-bar {
+    position: absolute; left: 22px; right: 22px; bottom: -8px; height: 3px; border-radius: 3px; overflow: hidden;
+    background: var(--line); opacity: 0; transform: scaleX(.3); transition: opacity .3s var(--ease), transform .5s var(--spring);
+  }
+  .dk-bar::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; transform-origin: 0 50%;
+    transform: scaleX(var(--rp, 0)); background: var(--marker); box-shadow: 0 0 8px var(--marker);
+    transition: transform .4s var(--spring);
+  }
+  .dock.reveal .dk-bar { opacity: 1; transform: none; }
+  /* rubbing: a soft light follows the finger */
+  .dock::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(90px 60px at var(--rx, 50%) 50%, color-mix(in srgb, var(--marker) 34%, transparent), transparent 70%);
+    opacity: 0; transition: opacity .3s var(--ease);
+  }
+  .dock.rubbing::after { opacity: 1; }
   .dock-num {
-    min-width: 104px; text-align: center;
+    position: relative; width: 104px; text-align: center;
     font: italic 400 22px/1 var(--serif); color: var(--marker);
     animation: pop .5s var(--spring) both;
   }
@@ -758,6 +997,9 @@ html.ios-app, html.ios-app body { height: var(--screen-h, 100vh); }
 html.ios-app .ambient, html.ios-app .pane-list, html.ios-app .pane-detail, html.ios-app .dial,
 html.ios-app .importer, html.ios-app .data-sheet { bottom: auto; height: var(--screen-h, 100vh); }
 html.ios-app .dock { bottom: auto; top: calc(var(--screen-h, 100vh) - 74px - env(safe-area-inset-bottom)); }
+
+/* opening straight into the sentence from last time: no slide */
+.no-anim .pane-detail, .no-anim .pane-list { transition: none !important; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

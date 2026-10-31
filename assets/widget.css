@@ -24,6 +24,12 @@ body.widget { background: var(--bg); }
   -webkit-backdrop-filter: blur(calc(var(--u) * 26)) saturate(175%); backdrop-filter: blur(calc(var(--u) * 26)) saturate(175%);
   box-shadow: var(--glass-inset), 0 calc(var(--u) * 10) calc(var(--u) * 30) rgba(0, 0, 0, .45);
 }
+/* the sentence's color from the app: tinted glass */
+.wg-card::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(140deg, color-mix(in srgb, var(--tint) 30%, transparent), color-mix(in srgb, var(--tint) 9%, transparent) 55%, color-mix(in srgb, var(--tint) 18%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 42%, transparent);
+}
 .wg-card::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
   background: linear-gradient(140deg, var(--glass-edge-a), var(--glass-edge-b) 32%, var(--glass-edge-b) 68%, var(--glass-edge-a));

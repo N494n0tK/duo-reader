@@ -34,7 +34,7 @@
       var d = JSON.parse(text);
       return {
         total: d.n, from: d.from, to: d.to, show: d.show,
-        items: d.s.map(function (x) { return { id: x[0], en: x[1], ja: x[2], spans: x[3] }; })
+        items: d.s.map(function (x) { return { id: x[0], en: x[1], ja: x[2], spans: x[3], color: x[4] || "" }; })
       };
     });
   }
@@ -58,11 +58,15 @@
       if (!pack || !pack.duo) return null;
       var duo = pack.duo, N = duo.sentences.length;
       var from = clamp(+params.get("from") || 1, 1, N), to = clamp(+params.get("to") || N, 1, N);
-      var marks = window.DuoMarks(duo).marks;
+      var marks = window.DuoMarks(duo).marks, colors = {};
+      try { colors = JSON.parse(localStorage.getItem("duo.colors") || "{}") || {}; } catch (e) {}
+      // ?colors=n,r,y,g : which of the app's sentence colors to show (n = no color)
+      var want = (params.get("colors") || "n,r,y,g").split(",");
       return {
         total: N, from: Math.min(from, to), to: Math.max(from, to), show: params.get("show") || "both",
-        items: duo.sentences.filter(function (s) { return s.id >= Math.min(from, to) && s.id <= Math.max(from, to); })
-          .map(function (s) { return { id: s.id, en: s.en, ja: s.ja, spans: spans(marks(s.id)) }; })
+        items: duo.sentences.filter(function (s) {
+          return s.id >= Math.min(from, to) && s.id <= Math.max(from, to) && want.indexOf(colors[s.id] || "n") > -1;
+        }).map(function (s) { return { id: s.id, en: s.en, ja: s.ja, spans: spans(marks(s.id)), color: colors[s.id] || "" }; })
       };
     });
   }
@@ -113,7 +117,7 @@
   function render(data) {
     var now = new Date(), item = pick(data.items, now), show = data.show;
     $wg.innerHTML =
-      '<article class="wg-card">' +
+      '<article class="wg-card"' + (item.color ? ' data-color="' + esc(item.color) + '"' : "") + ">" +
         '<header class="wg-head">' +
           '<span class="wg-num">#' + pad3(item.id) + "</span>" +
           '<span class="wg-of">/ ' + data.total + "</span>" +

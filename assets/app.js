@@ -31,6 +31,23 @@
   // ---------- storage (optional) ----------
   function load(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
   function save(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+  function loadJson(key, fallback) {
+    try { var v = JSON.parse(load(key)); return v && typeof v === "object" ? v : fallback; } catch (e) { return fallback; }
+  }
+
+  // ---------- the learner's own marks, kept on this device ----------
+  // sentence colors: { "12": "r", ... }  r / y / g
+  var COLORS = [["r", "赤"], ["y", "黄"], ["g", "緑"]];
+  var colors = loadJson("duo.colors", {});
+  function colorOf(sid) { return colors[sid] || ""; }
+  // recent searches, newest first
+  var recents = loadJson("duo.recent", []).filter(function (x) { return typeof x === "string"; }).slice(0, 10);
+  function remember(q) {
+    q = String(q || "").trim();
+    if (!q) return;
+    recents = [q].concat(recents.filter(function (x) { return norm(x) !== norm(q); })).slice(0, 10);
+    save("duo.recent", JSON.stringify(recents));
+  }
 
   // ---------- text helpers ----------
   function esc(s) {
@@ -43,6 +60,12 @@
       .replace(/[~〜]/g, "").replace(/[’‘]/g, "'").replace(/\s+/g, " ").trim();
   }
   function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+  // "12-22", "12〜22", "#12-#22": a range of numbers
+  function parseRange(raw) {
+    var m = String(raw).normalize("NFKC").trim().match(/^#?(\d{1,4})\s*[-~〜–—ー−]\s*#?(\d{1,4})$/);
+    if (!m || !+m[1] || !+m[2]) return null;
+    return [Math.min(+m[1], +m[2]), Math.max(+m[1], +m[2])];
+  }
   function pad3(n) { return String(n).padStart(3, "0"); }
   function posLabel(pos) {
     return pos.split("・").map(function (p) { return POS_NAMES[p] || p; }).join("・");
@@ -186,7 +209,7 @@
   }
 
   // ---------- state ----------
-  var state = { tab: "words", q: "", pos: "", field: "", limit: PAGE, current: null };
+  var state = { tab: "words", q: "", pos: "", field: "", color: "", limit: PAGE, current: null };
 
   var $q = document.getElementById("q");
   var $results = document.getElementById("results");
@@ -233,8 +256,9 @@
     return w._parts.indexOf(state.pos) > -1;
   }
 
-  function searchWords(q) {
+  function searchWords(q, range) {
     var list = WORDS.filter(posMatch);
+    if (range) return list.filter(function (w) { return +w.id >= range[0] && +w.id <= range[1]; });
     if (!q) return list;
     var scored = [];
     var wordStart = new RegExp("\\b" + escRe(q));
@@ -246,7 +270,8 @@
     return scored.map(function (x) { return x[1]; });
   }
 
-  function searchSentences(q) {
+  function searchSentences(q, range) {
+    if (range) return SENTENCES.slice(range[0] - 1, range[1]);
     if (!q) return SENTENCES;
     if (/^\d{1,3}$/.test(q)) return SENTENCES.filter(function (s) { return s.id === +q; });
     return SENTENCES.filter(function (s) { return s._en.indexOf(q) > -1 || s._ja.indexOf(q) > -1; });
@@ -276,38 +301,44 @@
   // ---------- list rendering ----------
   var TAB_NAMES = { words: "単語", sentences: "例文", terms: "ゲーム・技術の用語" };
 
+  function colorMatch(s) {
+    return !state.color || (state.color === "-" ? !colors[s.id] : colors[s.id] === state.color);
+  }
+  function colorAttrs(sid) {
+    var c = colorOf(sid);
+    return ' data-csid="' + sid + '"' + (c ? ' data-color="' + c + '"' : "");
+  }
+
   function renderList() {
-    var q = norm(state.q);
-    var found = { words: searchWords(q), sentences: searchSentences(q), terms: searchTerms(q) };
+    var q = norm(state.q), raw = state.q.trim(), range = parseRange(raw);
+    var found = { words: searchWords(q, range), sentences: searchSentences(q, range).filter(colorMatch), terms: searchTerms(q) };
     $countWords.textContent = found.words.length.toLocaleString();
     $countSentences.textContent = found.sentences.length.toLocaleString();
     $countTerms.textContent = found.terms.length.toLocaleString();
-    $posFilter.hidden = state.tab === "sentences";
 
-    var raw = state.q.trim();
     var html = "";
     var items = found[state.tab];
     var shown = items.slice(0, state.limit);
 
     if (!items.length) {
-      html = '<p class="empty">「' + esc(raw) + '」に一致する' + TAB_NAMES[state.tab] + "はありません。";
+      html = '<p class="empty">' + (raw ? "「" + esc(raw) + "」に一致する" : "この色の") + TAB_NAMES[state.tab] + "はありません。";
       var other = $tabs.map(function (t) { return t.dataset.tab; })
         .filter(function (tab) { return tab !== state.tab && found[tab].length; })[0];
       if (other) html += '<br><button class="more" data-switch="' + other + '">' + TAB_NAMES[other] + "で " + found[other].length + " 件見つかりました</button>";
-      else if (state.tab === "words" ? state.pos : state.field) html += '<br><button class="more" data-clear-filter>絞り込みを外す</button>';
+      else if (state.tab === "words" ? state.pos : state.tab === "sentences" ? state.color : state.field) html += '<br><button class="more" data-clear-filter>絞り込みを外す</button>';
       html += "</p>";
     } else if (state.tab === "words") {
       html = shown.map(function (w) {
-        return '<button class="row" role="listitem" data-href="#/w/' + w.id + '"' + (state.current === "w" + w.id ? ' aria-current="true"' : "") + ">" +
+        return '<button class="row" role="listitem" data-href="#/w/' + w.id + '"' + colorAttrs(w.sid) + (state.current === "w" + w.id ? ' aria-current="true"' : "") + ">" +
           '<span class="row-num">' + w.id + "</span>" +
-          '<span class="row-head"><span class="row-word">' + markQuery(w.word, raw) + '</span><span class="row-pos">' + esc(posLabel(w.pos)) + "</span></span>" +
+          '<span class="row-head"><span class="row-word en">' + markQuery(w.word, raw) + '</span><span class="row-pos">' + esc(posLabel(w.pos)) + "</span></span>" +
           '<span class="row-sub ja">' + markQuery(w.meaning, raw) + "</span></button>";
       }).join("");
     } else if (state.tab === "sentences") {
       html = shown.map(function (s) {
-        return '<button class="row" role="listitem" data-href="#/s/' + s.id + '"' + (state.current === "s" + s.id ? ' aria-current="true"' : "") + ">" +
+        return '<button class="row" role="listitem" data-href="#/s/' + s.id + '"' + colorAttrs(s.id) + (state.current === "s" + s.id ? ' aria-current="true"' : "") + ">" +
           '<span class="row-num">' + pad3(s.id) + "</span>" +
-          '<span class="row-sentence">' + markQuery(s.en, raw) + "</span>" +
+          '<span class="row-sentence en">' + markQuery(s.en, raw) + "</span>" +
           '<span class="row-sub ja">' + markQuery(s.ja, raw) + "</span></button>";
       }).join("");
     } else {
@@ -337,6 +368,17 @@
   }
 
   function renderFilter() {
+    if (state.tab === "sentences") {
+      var count = { r: 0, y: 0, g: 0 };
+      Object.keys(colors).forEach(function (id) { if (count[colors[id]] >= 0 && SENTENCES[id - 1]) count[colors[id]]++; });
+      $posFilter.innerHTML = '<button class="chip" data-filter="" aria-pressed="' + !state.color + '">すべて</button>' +
+        COLORS.map(function (c) {
+          return '<button class="chip chip-color" data-filter="' + c[0] + '" data-color="' + c[0] + '" aria-pressed="' + (state.color === c[0]) + '" aria-label="' + c[1] + '">' +
+            '<i class="cdot" aria-hidden="true"></i>' + count[c[0]] + "</button>";
+        }).join("") +
+        '<button class="chip" data-filter="-" aria-pressed="' + (state.color === "-") + '">色なし</button>';
+      return;
+    }
     var terms = state.tab === "terms";
     var list = terms ? TERM_FILTERS : POS_FILTERS;
     var current = terms ? state.field : state.pos;
@@ -368,8 +410,32 @@
     close: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg>',
     prev5: '<svg viewBox="0 0 24 24"><path d="M12 5l-7 7 7 7M19 5l-7 7 7 7"/></svg>',
     next5: '<svg viewBox="0 0 24 24"><path d="M5 5l7 7-7 7M12 5l7 7-7 7"/></svg>',
-    del: '<svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>'
+    del: '<svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>',
+    drop: '<svg viewBox="0 0 24 24"><path class="drop" d="M12 3.6c3.4 4.1 5.7 7.2 5.7 10.1a5.7 5.7 0 0 1-11.4 0c0-2.9 2.3-6 5.7-10.1Z"/></svg>',
+    clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.8V12l2.8 1.8"/></svg>'
   };
+
+  // the color swatches: three colors and "no color"
+  function swatches(current) {
+    return COLORS.concat([["", "色なし"]]).map(function (c) {
+      return '<button type="button" class="sw" data-tint="' + c[0] + '"' + (c[0] ? ' data-color="' + c[0] + '"' : "") +
+        ' role="radio" aria-checked="' + (current === c[0]) + '" aria-label="' + c[1] + '"></button>';
+    }).join("");
+  }
+
+  // the gauge: where this sentence sits in the book, with the learner's colors along it
+  var BLOCK = 20;
+  function colorStrip() {
+    var out = "";
+    Object.keys(colors).forEach(function (id) {
+      if (SENTENCES[id - 1]) out += '<rect class="gs-' + colors[id] + '" x="' + (id - 1) + '" width="3.6" height="1"/>';
+    });
+    return '<svg class="gauge-strip" viewBox="0 0 ' + SENTENCES.length + ' 1" preserveAspectRatio="none" aria-hidden="true">' + out + "</svg>";
+  }
+  function peekText(sid) {
+    var s = SENTENCES[sid - 1], body = document.body.classList;
+    return !body.contains("hide-en") ? { text: s.en, en: true } : !body.contains("hide-ja") ? { text: s.ja, en: false } : { text: "", en: false };
+  }
 
   var lastSid = null, lastP = 0;
 
@@ -392,14 +458,35 @@
       html += '<div class="seek">' +
         '<div class="seek-bar">' +
           '<button class="seek-btn" type="button" data-seek-open aria-label="例文を検索">' + ICON.search + "</button>" +
-          '<input class="seek-input" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1" placeholder="英語・日本語・番号" aria-label="例文を検索">' +
+          '<input class="seek-input" type="search" inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false" tabindex="-1" placeholder="英語・日本語・12-22" aria-label="例文を検索">' +
           '<button class="seek-close" type="button" data-seek-close aria-label="検索を閉じる">' + ICON.close + "</button>" +
         "</div>" +
         '<div class="seek-panel"><div class="seek-list"></div></div>' +
       "</div>";
+      // phones: the position gauge; tap it and it opens into a big two-step picker
+      html += '<div class="gauge" style="--p:' + lastP + '">' +
+        '<button class="gauge-bar" type="button" data-gauge-open aria-label="例文の位置（タップで大きく）">' +
+          '<span class="gauge-track">' + colorStrip() + '<span class="gauge-cursor"></span></span>' +
+          '<span class="gauge-head"><span class="gauge-num"></span><span class="gauge-of">/ ' + SENTENCES.length + '</span><span class="gauge-range"></span></span>' +
+        "</button>" +
+        '<button class="gauge-close" type="button" data-gauge-close aria-label="閉じる">' + ICON.close + "</button>" +
+        '<div class="gauge-panel"><div class="gauge-body">' +
+          '<p class="gauge-peek" aria-live="polite"></p>' +
+          '<div class="gauge-blocks" data-blocks aria-label="20文ずつのまとまり">' +
+            Array.apply(null, Array(Math.ceil(SENTENCES.length / BLOCK))).map(function (_, k) { return '<i data-b="' + k + '"></i>'; }).join("") +
+          "</div>" +
+          '<div class="gauge-scale" aria-hidden="true"><span>1</span><span>' + SENTENCES.length + "</span></div>" +
+          '<div class="gauge-cells" data-cells></div>' +
+        "</div></div>" +
+      "</div>";
     }
     html += '<span class="eyebrow">' + (opts.home ? "ランダムな一文" : word ? "単語 " + word.id : "例文") + "</span>";
     html += '<span class="spacer"></span>';
+    // this sentence's color: tap and it drops down into the three colors and "none"
+    html += '<div class="tint"' + (colorOf(sid) ? ' data-color="' + colorOf(sid) + '"' : "") + '><div class="tint-cap">' +
+      '<button class="tint-btn" type="button" data-tint-open aria-label="この例文の色">' + ICON.drop + "</button>" +
+      '<div class="tint-panel"><div class="tint-list" role="radiogroup" aria-label="この例文の色">' + swatches(colorOf(sid)) + "</div></div>" +
+    "</div></div>";
     if (opts.home) {
       html += '<button class="nav-btn" data-shuffle title="別の例文"><span class="sr">別の例文</span>' + ICON.shuffle + "</button>";
     } else {
@@ -412,7 +499,7 @@
       '<span class="rail-label">#' + pad3(sid) + '</span><span class="rail-cursor"></span><span class="rail-peek" aria-hidden="true"></span></div>';
 
     if (word) {
-      html += '<header class="headword"><div class="headword-line"><h1><span>' + esc(word.word) + "</span></h1>" +
+      html += '<header class="headword"><div class="headword-line"><h1 class="en"><span>' + esc(word.word) + "</span></h1>" +
         '<span class="pos-tag">' + esc(posLabel(word.pos)) + "</span></div>" +
         (LX.words[word.id] && LX.words[word.id].ipa
           ? '<p class="ipa"><span lang="en">' + esc(LX.words[word.id].ipa) + '</span><span class="ipa-src">米音 · ' + IPA_SRC[LX.words[word.id].ipaSrc] + "</span></p>"
@@ -420,10 +507,10 @@
         '<p class="meaning ja">' + esc(word.meaning) + "</p></header>";
     }
 
-    html += '<section class="sentence-card' + (same ? " static" : "") + '" aria-label="例文 ' + sid + '">' +
+    html += '<section class="sentence-card' + (same ? " static" : "") + '"' + colorAttrs(sid) + ' aria-label="例文 ' + sid + '">' +
       '<div class="card-head"><span class="card-num">#' + pad3(sid) + '</span><span class="card-of">/ ' + SENTENCES.length + "</span></div>" +
       '<p class="sentence-en" lang="en">' + renderSentenceHtml(sid, word && word.id) + "</p>" +
-      '<p class="sentence-ja ja">' + esc(s.ja) + "</p></section>";
+      '<p class="sentence-ja">' + esc(s.ja) + "</p></section>";
 
     if (word) html += etymologyCard(word);
 
@@ -437,15 +524,18 @@
     html += '<div class="word-list">' + siblings.map(function (w) {
       return '<button class="word-item" data-href="#/w/' + w.id + '" data-wid="' + w.id + '"' + (word && w.id === word.id ? ' aria-current="true"' : "") + ">" +
         '<span class="n">' + w.id + "</span>" +
-        '<span><span class="w">' + esc(w.word) + '</span><span class="m ja">' + esc(w.meaning) + "</span></span>" +
+        '<span><span class="w en">' + esc(w.word) + '</span><span class="m ja">' + esc(w.meaning) + "</span></span>" +
         '<span class="p">' + esc(posLabel(w.pos)) + "</span></button>";
     }).join("") + "</div>";
 
+    // bottom dock: « number » moves 5 at a time; while the sentence is hidden it turns into ‹ › that clear it word by word
     if (!opts.home) {
       html += '<nav class="dock" aria-label="例文の移動">' +
-        '<button class="nav-btn" data-go="' + Math.max(1, sid - 5) + '"' + (sid <= 1 ? " disabled" : "") + '><span class="sr">5つ前の例文</span>' + ICON.prev5 + "</button>" +
-        '<span class="dock-num" title="ダブルタップで番号を入力">#' + pad3(sid) + "<small>/ " + SENTENCES.length + "</small></span>" +
-        '<button class="nav-btn" data-go="' + Math.min(SENTENCES.length, sid + 5) + '"' + (sid >= SENTENCES.length ? " disabled" : "") + '><span class="sr">5つ先の例文</span>' + ICON.next5 + "</button></nav>";
+        '<button class="nav-btn dock-l" data-go="' + Math.max(1, sid - 5) + '"' + (sid <= 1 ? ' data-end="1"' : "") + '>' +
+          '<span class="dk-nav"><span class="sr">5つ前の例文</span>' + ICON.prev5 + '</span><span class="dk-rv" aria-hidden="true">' + ICON.prev + "</span></button>" +
+        '<span class="dock-num" title="ダブルタップで番号を入力">#' + pad3(sid) + '<small class="dk-of">/ ' + SENTENCES.length + '</small><small class="dk-prog"></small><i class="dk-bar" aria-hidden="true"></i></span>' +
+        '<button class="nav-btn dock-r" data-go="' + Math.min(SENTENCES.length, sid + 5) + '"' + (sid >= SENTENCES.length ? ' data-end="1"' : "") + '>' +
+          '<span class="dk-nav"><span class="sr">5つ先の例文</span>' + ICON.next5 + '</span><span class="dk-rv" aria-hidden="true">' + ICON.next + "</span></button></nav>";
     }
 
     if (opts.home) {
@@ -456,12 +546,121 @@
     $detail.innerHTML = html;
     if (!same) $detail.scrollTop = 0;
 
-    // slide the rail cursor from the previous sentence to this one
-    var rail = $detail.querySelector(".rail");
+    // slide the rail and gauge cursors from the previous sentence to this one
+    var rail = $detail.querySelector(".rail"), gauge = $detail.querySelector(".gauge");
     void rail.offsetWidth;
     rail.style.setProperty("--p", p);
+    if (gauge) gauge.style.setProperty("--p", p);
     lastSid = sid;
     lastP = p;
+    setupReveal(same);
+  }
+
+  // ---------- hide & reveal: a hidden sentence is blurred and cleared one word at a time ----------
+  // b[k] is how hidden word k still is (1 = blurred, 0 = clear). English words come first, then the Japanese phrases.
+  var rv = { sid: 0, words: [], b: [], hidden: 0, done: false };
+  var rvTimer, rvGuard = 0;
+  function wrapEnglish(p) {
+    var walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (n) { return n.parentNode.closest("rt") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
+    });
+    var nodes = [], n, k = -1, gap = true;
+    while ((n = walker.nextNode())) nodes.push(n);
+    nodes.forEach(function (node) {
+      var frag = document.createDocumentFragment();
+      node.nodeValue.split(/(\s+)/).forEach(function (piece) {
+        if (!piece) return;
+        if (/^\s+$/.test(piece)) { gap = true; frag.appendChild(document.createTextNode(piece)); return; }
+        // a word continues across a marker edge ("individual" + "."), and lone punctuation joins the word before it
+        if (gap && !(k >= 0 && !/[\w\d]/.test(piece))) k++;
+        gap = false;
+        var span = document.createElement("span");
+        span.className = "wd";
+        span.dataset.k = k;
+        span.textContent = piece;
+        frag.appendChild(span);
+      });
+      node.parentNode.replaceChild(frag, node);
+    });
+    return k + 1;
+  }
+  function wrapJapanese(p, k0) {
+    var parts = p.textContent.match(/[^、。！？!?]+[、。！？!?」』）)]*|[、。！？!?」』）)]+/g) || [p.textContent];
+    p.textContent = "";
+    parts.forEach(function (part, i) {
+      var span = document.createElement("span");
+      span.className = "wd";
+      span.dataset.k = k0 + i;
+      span.textContent = part;
+      p.appendChild(span);
+    });
+    return parts.length;
+  }
+  function setupReveal(keep) {
+    var card = $detail.querySelector(".sentence-card[data-csid]");
+    if (!card) return;
+    var en = card.querySelector(".sentence-en"), ja = card.querySelector(".sentence-ja");
+    if (!en.querySelector(".wd")) { card.dataset.nen = wrapEnglish(en); card.dataset.nja = wrapJapanese(ja, +card.dataset.nen); }
+    var nEn = +card.dataset.nen, nJa = +card.dataset.nja, body = document.body.classList;
+    var hideEn = body.contains("hide-en"), hideJa = body.contains("hide-ja");
+    var sid = +card.dataset.csid, b = [];
+    for (var k = 0; k < nEn + nJa; k++) b.push((k < nEn ? hideEn : hideJa) ? 1 : 0);
+    // moving between the words of the same sentence keeps what was already cleared
+    if (keep && rv.sid === sid && rv.b.length === b.length) b = b.map(function (x, i) { return Math.min(x, rv.b[i]); });
+    rv = { sid: sid, words: Array.prototype.slice.call(card.querySelectorAll(".wd")), b: b, card: card, done: false };
+    card.classList.toggle("rv", hideEn || hideJa);
+    paintReveal(true);
+  }
+  function paintReveal(instant) {
+    if (!rv.card || !rv.card.isConnected) return;
+    rv.words.forEach(function (w) { w.style.setProperty("--b", rv.b[+w.dataset.k].toFixed(3)); });
+    var total = 0, clear = 0;
+    rv.b.forEach(function (x, k) { if (rv.card.classList.contains("rv") && isHideable(k)) { total++; if (x === 0) clear++; } });
+    rv.hidden = rv.b.filter(function (x) { return x > 0; }).length;
+    var dock = $detail.querySelector(".dock");
+    if (!dock) return;
+    dock.querySelector(".dk-prog").textContent = clear + "/" + total;
+    dock.style.setProperty("--rp", total ? clear / total : 1);
+    clearTimeout(rvTimer);
+    if (rv.hidden) setDockMode(dock, true);
+    // everything is clear: give the dock back to « » after a moment, so a quick extra tap does not jump 5 sentences
+    else if (dock.classList.contains("reveal")) {
+      if (instant) setDockMode(dock, false);
+      else rvTimer = setTimeout(function () { setDockMode(dock, false); }, 650);
+    } else setDockMode(dock, false);
+  }
+  function isHideable(k) {
+    var nEn = +rv.card.dataset.nen, body = document.body.classList;
+    return k < nEn ? body.contains("hide-en") : body.contains("hide-ja");
+  }
+  function setDockMode(dock, reveal) {
+    if (dock.classList.contains("reveal") !== reveal) rvGuard = Date.now() + 380;
+    dock.classList.toggle("reveal", reveal);
+    Array.prototype.forEach.call(dock.querySelectorAll(".nav-btn"), function (btn) {
+      btn.disabled = !reveal && btn.dataset.end === "1";
+    });
+  }
+  // +1: clear the next hidden word; -1: hide the last cleared one again
+  function revealStep(dir) {
+    var k;
+    if (dir > 0) {
+      k = rv.b.findIndex(function (x) { return x > 0; });
+      if (k > -1) rv.b[k] = 0;
+    } else {
+      for (k = rv.b.length - 1; k >= 0; k--) if (isHideable(k) && rv.b[k] < 1) { rv.b[k] = 1; break; }
+    }
+    paintReveal();
+  }
+  // rubbing the dock: the words clear little by little, in order
+  function revealBy(amount) {
+    while (amount > 0) {
+      var k = rv.b.findIndex(function (x) { return x > 0; });
+      if (k < 0) break;
+      var take = Math.min(rv.b[k], amount);
+      rv.b[k] = rv.b[k] - take < .02 ? 0 : rv.b[k] - take;
+      amount -= take;
+    }
+    paintReveal();
   }
 
   function qaBadge(t) {
@@ -550,6 +749,7 @@
     var valid = m && (m[1] === "w" ? wordById[m[2]] : m[1] === "t" ? termById[m[2]] : SENTENCES[+m[2] - 1]);
     if (valid) {
       state.current = m[1] + m[2];
+      if (m[1] !== "t") save("duo.last", location.hash);
       if (m[1] === "t") renderTerm(m[2]);
       else renderDetail(m[1], m[2]);
       document.body.classList.add("show-detail");
@@ -585,6 +785,7 @@
   function syncClear() { $qClear.hidden = !$q.value; }
   $q.addEventListener("input", function () {
     syncClear();
+    syncRecent();
     clearTimeout(timer);
     timer = setTimeout(applyQuery, 90);
   });
@@ -593,16 +794,50 @@
     syncClear();
     applyQuery();
     $q.focus();
+    syncRecent();
   });
   $q.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
       e.preventDefault();
       applyQuery();
+      remember($q.value);
       var first = $results.querySelector(".row");
       if (first) { go(first.dataset.href); $q.blur(); }
     } else if (e.key === "Escape") {
       $q.blur();
     }
+  });
+
+  // recent searches: they drop down under the empty search field
+  var $recent = document.getElementById("recent");
+  function syncRecent() {
+    var show = document.activeElement === $q && !$q.value && recents.length > 0;
+    if (show && $recent.hidden) {
+      $recent.innerHTML = '<div class="recent-head"><span>最近の検索</span><button type="button" data-recent-clear>消す</button></div>' +
+        recents.map(function (r, n) {
+          return '<button type="button" class="recent-item" data-recent="' + esc(r) + '" style="--i:' + n + '">' + ICON.clock + "<span>" + esc(r) + "</span></button>";
+        }).join("");
+    }
+    $recent.hidden = !show;
+  }
+  $q.addEventListener("focus", syncRecent);
+  $q.addEventListener("blur", function () { setTimeout(syncRecent, 0); });
+  // keep the keyboard up while choosing from the list
+  $recent.addEventListener("pointerdown", function (e) { e.preventDefault(); });
+  $recent.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-recent]");
+    if (e.target.closest("[data-recent-clear]")) {
+      recents = [];
+      save("duo.recent", "[]");
+      $recent.hidden = true;
+      return;
+    }
+    if (!b) return;
+    $q.value = b.dataset.recent;
+    syncClear();
+    applyQuery();
+    remember($q.value);
+    $q.blur();
   });
 
   $tabs.forEach(function (t) {
@@ -613,6 +848,7 @@
     var b = e.target.closest("[data-filter]");
     if (!b) return;
     if (state.tab === "terms") state.field = b.dataset.filter;
+    else if (state.tab === "sentences") state.color = b.dataset.filter;
     else state.pos = b.dataset.filter;
     state.limit = PAGE;
     renderFilter();
@@ -621,17 +857,94 @@
   });
 
   $results.addEventListener("click", function (e) {
+    if (Date.now() < noClickUntil) return;
+    if (e.target.closest(".swipe-tray")) {
+      var sw = e.target.closest("[data-tint]");
+      if (sw && tray) { setColor(+tray.row.dataset.csid, sw.dataset.tint); setTimeout(closeTray, 220); }
+      return;
+    }
     var row = e.target.closest("[data-href]");
-    if (row) return go(row.dataset.href);
+    if (row) {
+      if (state.q.trim()) remember(state.q);
+      return go(row.dataset.href);
+    }
     if (e.target.closest("[data-more]")) { state.limit += PAGE; renderList(); return; }
     var sw = e.target.closest("[data-switch]");
     if (sw) { setTab(sw.dataset.switch); return; }
     if (e.target.closest("[data-clear-filter]")) {
-      if (state.tab === "terms") state.field = ""; else state.pos = "";
+      if (state.tab === "terms") state.field = ""; else if (state.tab === "sentences") state.color = ""; else state.pos = "";
       renderFilter();
       renderList();
     }
   });
+
+  // ---------- list: swipe a row to the right and colored glass comes out on the left ----------
+  var TRAY_W = 184, rs = null, tray = null, noClickUntil = 0;
+  function openTray(row) {
+    closeTray(true);
+    var el = document.createElement("div");
+    el.className = "swipe-tray";
+    el.setAttribute("role", "radiogroup");
+    el.setAttribute("aria-label", "例文 " + row.dataset.csid + " の色");
+    el.innerHTML = swatches(colorOf(+row.dataset.csid));
+    el.style.cssText = "top:" + row.offsetTop + "px;left:" + row.offsetLeft + "px;height:" + row.offsetHeight + "px;width:" + TRAY_W + "px";
+    row.parentNode.insertBefore(el, row);
+    tray = { el: el, row: row };
+  }
+  function closeTray(now) {
+    if (!tray) return;
+    var t = tray;
+    tray = null;
+    t.row.classList.remove("swiping");
+    t.row.style.transform = "";
+    t.el.classList.remove("open");
+    t.el.style.setProperty("--t", 0);
+    if (now) t.el.remove();
+    else setTimeout(function () { t.el.remove(); }, 450);
+  }
+  $results.addEventListener("touchstart", function (e) {
+    rs = null;
+    if (tray && !e.target.closest(".swipe-tray")) {
+      // a tap anywhere else just puts the row back
+      closeTray();
+      noClickUntil = Date.now() + 500;
+      return;
+    }
+    var row = e.target.closest(".row[data-csid]");
+    if (!row || e.touches.length !== 1 || tray) return;
+    rs = { row: row, x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, on: false };
+  }, { passive: true });
+  $results.addEventListener("touchmove", function (e) {
+    if (!rs) return;
+    var t = e.touches[0], dx = t.clientX - rs.x, dy = t.clientY - rs.y;
+    if (!rs.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { rs = null; return; }
+      if (dx < -10) { rs = null; return; }
+      if (dx < 10) return;
+      rs.on = true;
+      openTray(rs.row);
+      rs.row.classList.add("swiping");
+    }
+    e.preventDefault();
+    rs.dx = dx <= TRAY_W ? Math.max(0, dx) : TRAY_W + (dx - TRAY_W) / 4;
+    rs.row.style.transform = "translateX(" + rs.dx + "px)";
+    tray.el.style.setProperty("--t", Math.min(1, rs.dx / TRAY_W).toFixed(3));
+  }, { passive: false });
+  function endRowSwipe() {
+    if (!rs || !rs.on) { rs = null; return; }
+    var s = rs;
+    rs = null;
+    noClickUntil = Date.now() + 400;
+    s.row.classList.remove("swiping");
+    if (s.dx > TRAY_W * .42 && tray) {
+      s.row.style.transform = "translateX(" + TRAY_W + "px)";
+      tray.el.style.setProperty("--t", 1);
+      tray.el.classList.add("open");
+    } else closeTray();
+  }
+  $results.addEventListener("touchend", endRowSwipe);
+  $results.addEventListener("touchcancel", endRowSwipe);
+  $results.addEventListener("scroll", function () { if (tray && !rs) closeTray(); }, { passive: true });
 
   // ---------- sentence search on the detail screen (phones) ----------
   var seekQuery = "", seekTimer;
@@ -645,7 +958,8 @@
     input.tabIndex = 0;
     input.value = seekQuery;
     input.focus(); // must happen inside the tap for the iPhone keyboard to come up
-    if (seekQuery) { input.select(); renderSeek(); }
+    if (seekQuery) input.select();
+    renderSeek();
   }
   function closeSeek() {
     var el = seekEl();
@@ -667,14 +981,25 @@
     var input = el.querySelector(".seek-input"), list = el.querySelector(".seek-list");
     seekQuery = input.value;
     var raw = seekQuery.trim(), q = norm(raw);
-    if (!q) { el.classList.remove("has-results"); return; }
-    var hits = searchSentences(q), LIMIT = 60;
+    if (!q) {
+      // nothing typed yet: the recent searches
+      if (!recents.length) { el.classList.remove("has-results"); return; }
+      list.innerHTML = '<p class="seek-cap">最近の検索</p>' + recents.map(function (r, n) {
+        return '<button type="button" class="seek-row seek-recent" data-seek-recent="' + esc(r) + '" style="--i:' + n + '">' +
+          '<span class="seek-num">' + ICON.clock + '</span><span class="seek-en">' + esc(r) + "</span></button>";
+      }).join("");
+      list.scrollTop = 0;
+      fitSeek(el);
+      el.classList.add("has-results");
+      return;
+    }
+    var hits = searchSentences(q, parseRange(raw)), LIMIT = 60;
     list.innerHTML = hits.length
       ? hits.slice(0, LIMIT).map(function (s, n) {
-          return '<button type="button" class="seek-row" data-seek-go="' + s.id + '"' + (s.id === lastSid ? ' aria-current="true"' : "") +
+          return '<button type="button" class="seek-row" data-seek-go="' + s.id + '"' + colorAttrs(s.id) + (s.id === lastSid ? ' aria-current="true"' : "") +
             (n < 12 ? ' style="--i:' + n + '"' : "") + ">" +
             '<span class="seek-num">#' + pad3(s.id) + "</span>" +
-            '<span class="seek-en" lang="en">' + markQuery(s.en, raw) + "</span>" +
+            '<span class="seek-en en" lang="en">' + markQuery(s.en, raw) + "</span>" +
             '<span class="seek-ja ja">' + markQuery(s.ja, raw) + "</span></button>";
         }).join("") + (hits.length > LIMIT ? '<p class="seek-note">ほか ' + (hits.length - LIMIT) + " 件。もう少し絞り込んでください</p>" : "")
       : '<p class="seek-note">「' + esc(raw) + "」を含む例文はありません</p>";
@@ -693,6 +1018,7 @@
     else if (e.key === "Enter") {
       e.preventDefault();
       renderSeek();
+      remember(seekQuery);
       var first = $detail.querySelector(".seek-row");
       if (first) first.click();
     }
@@ -702,16 +1028,130 @@
     if (el && el.classList.contains("has-results")) fitSeek(el);
   });
 
+  // ---------- top-bar pop-outs: the gauge and the color drop ----------
+  function topBar() { return $detail.querySelector(".detail-top"); }
+  function closePops() {
+    var bar = topBar();
+    if (!bar) return;
+    var g = bar.querySelector(".gauge.open"), t = bar.querySelector(".tint.open");
+    if (g) g.classList.remove("open");
+    if (t) t.classList.remove("open");
+    bar.classList.remove("gauging", "tinting");
+    gauge = null;
+  }
+  function openTint() {
+    var el = $detail.querySelector(".tint");
+    if (!el) return;
+    closeSeek(); closePops();
+    el.classList.add("open");
+    topBar().classList.add("tinting");
+  }
+  function setColor(sid, c) {
+    if (c) colors[sid] = c; else delete colors[sid];
+    save("duo.colors", JSON.stringify(colors));
+    // repaint everything that shows this sentence's color, in place
+    Array.prototype.forEach.call(document.querySelectorAll('[data-csid="' + sid + '"]'), function (el) {
+      if (c) el.dataset.color = c; else delete el.dataset.color;
+    });
+    var tint = $detail.querySelector(".tint");
+    if (tint && sid === lastSid) {
+      if (c) tint.dataset.color = c; else delete tint.dataset.color;
+      Array.prototype.forEach.call(tint.querySelectorAll(".sw"), function (sw) { sw.setAttribute("aria-checked", String(sw.dataset.tint === c)); });
+    }
+    var strip = $detail.querySelector(".gauge-strip");
+    if (strip) strip.outerHTML = colorStrip();
+    if (state.tab === "sentences") renderFilter();
+  }
+
+  var gauge = null; // the open gauge: which block of 20 is shown
+  function openGauge() {
+    var el = $detail.querySelector(".gauge");
+    if (!el) return;
+    closeSeek(); closePops();
+    gauge = { el: el, block: -1, sid: lastSid };
+    showBlock(Math.floor((lastSid - 1) / BLOCK));
+    gaugeShow(lastSid);
+    el.classList.add("open");
+    topBar().classList.add("gauging");
+  }
+  function showBlock(k) {
+    if (!gauge || k === gauge.block) return;
+    gauge.block = k;
+    var from = k * BLOCK + 1, to = Math.min(SENTENCES.length, from + BLOCK - 1), html = "";
+    for (var id = from; id <= to; id++) {
+      html += '<button type="button" data-cell="' + id + '"' + colorAttrs(id) + (id === lastSid ? ' aria-current="true"' : "") + ">" + id + "</button>";
+    }
+    var cells = gauge.el.querySelector("[data-cells]");
+    cells.innerHTML = html;
+    cells.style.setProperty("--rows", Math.ceil((to - from + 1) / 10));
+    Array.prototype.forEach.call(gauge.el.querySelectorAll("[data-b]"), function (b) {
+      b.classList.toggle("sel", +b.dataset.b === k);
+      b.classList.toggle("cur", +b.dataset.b === Math.floor((lastSid - 1) / BLOCK));
+    });
+    gauge.el.querySelector(".gauge-range").textContent = from + "–" + to;
+  }
+  function gaugeShow(sid) {
+    gauge.sid = sid;
+    gauge.el.querySelector(".gauge-num").textContent = "#" + pad3(sid);
+    var peek = peekText(sid), $peek = gauge.el.querySelector(".gauge-peek");
+    $peek.textContent = peek.text;
+    $peek.classList.toggle("en", peek.en);
+    Array.prototype.forEach.call(gauge.el.querySelectorAll("[data-cell]"), function (c) { c.classList.toggle("hot", +c.dataset.cell === sid); });
+  }
+  // press and slide: the top row picks a block of 20, the grid below picks the sentence; letting go there moves to it
+  var gp = null;
+  function gaugeAt(e) {
+    var r = gp.area.getBoundingClientRect();
+    var fx = Math.min(Math.max((e.clientX - r.left) / r.width, 0), .9999);
+    if (gp.kind === "blocks") {
+      var k = Math.floor(fx * Math.ceil(SENTENCES.length / BLOCK));
+      showBlock(k);
+      gaugeShow(Math.min(SENTENCES.length, k * BLOCK + 1 + (gauge.sid - 1) % BLOCK));
+    } else {
+      var rows = +gp.area.style.getPropertyValue("--rows") || 2;
+      var fy = Math.min(Math.max((e.clientY - r.top) / r.height, 0), .9999);
+      var sid = gauge.block * BLOCK + 1 + Math.floor(fy * rows) * 10 + Math.floor(fx * 10);
+      gaugeShow(Math.min(sid, SENTENCES.length, (gauge.block + 1) * BLOCK));
+    }
+  }
+
   var lastNumTap = 0;
   $detail.addEventListener("click", function (e) {
-    var t, seek = seekEl();
+    var t, seek = seekEl(), bar = topBar();
     if (seek && seek.classList.contains("open") && !e.target.closest(".seek, [data-back]")) { closeSeek(); return; }
+    if (bar && bar.matches(".gauging, .tinting") && !e.target.closest(".gauge.open, .tint.open")) { closePops(); return; }
     if (e.target.closest("[data-seek-open]")) { if (seek.classList.contains("open")) seek.querySelector(".seek-input").focus(); else openSeek(); return; }
     if (e.target.closest("[data-seek-close]")) { closeSeek(); return; }
+    if ((t = e.target.closest("[data-seek-recent]"))) {
+      var input = seek.querySelector(".seek-input");
+      input.value = t.dataset.seekRecent;
+      renderSeek();
+      return;
+    }
     if ((t = e.target.closest("[data-seek-go]"))) {
       var to = +t.dataset.seekGo;
+      remember(seekQuery);
       closeSeek();
       if (to !== lastSid) go("#/s/" + to);
+      return;
+    }
+    if (e.target.closest("[data-gauge-open]")) { if (e.target.closest(".gauge.open")) closePops(); else openGauge(); return; }
+    if (e.target.closest("[data-gauge-close]")) { closePops(); return; }
+    if (e.target.closest(".gauge")) return;
+    if (e.target.closest("[data-tint-open]")) { if (e.target.closest(".tint.open")) closePops(); else openTint(); return; }
+    if ((t = e.target.closest("[data-tint]"))) {
+      setColor(lastSid, t.dataset.tint);
+      setTimeout(closePops, 260); // let the choice show before the drop closes
+      return;
+    }
+    if ((t = e.target.closest(".dock .nav-btn")) && t.closest(".reveal")) {
+      if (Date.now() > rvGuard) revealStep(t.classList.contains("dock-r") ? 1 : -1);
+      return;
+    }
+    if ((t = e.target.closest(".dock .nav-btn")) && Date.now() < rvGuard) return;
+    if ((t = e.target.closest(".rv .wd")) && rv.b[+t.dataset.k] > 0) {
+      rv.b[+t.dataset.k] = 0;
+      paintReveal();
       return;
     }
     if (e.target.closest(".dock-num, .card-num")) {
@@ -719,7 +1159,7 @@
       if (now - lastNumTap < 400) { lastNumTap = 0; openDial(); } else lastNumTap = now;
       return;
     }
-    if ((t = e.target.closest(".hide-ja .ja")) && !t.classList.contains("shown")) {
+    if ((t = e.target.closest(".hide-ja .ja, .hide-en .en")) && !t.classList.contains("shown")) {
       t.classList.add("shown");
       return;
     }
@@ -760,8 +1200,54 @@
     scrub.rail.style.setProperty("--p", (sid - 1) / (SENTENCES.length - 1));
     scrub.rail.setAttribute("aria-valuenow", sid);
     scrub.label.textContent = "#" + pad3(sid);
-    scrub.peek.innerHTML = "<b>#" + pad3(sid) + "</b>" + esc(SENTENCES[sid - 1].en);
+    scrub.peek.innerHTML = "<b>#" + pad3(sid) + "</b>" + esc(peekText(sid).text);
   }
+  // rubbing the dock while the sentence is hidden clears it little by little (about one word per 44px of finger travel)
+  var rub = null;
+  $detail.addEventListener("pointerdown", function (e) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    var area = e.target.closest("[data-blocks], [data-cells]");
+    if (area && gauge) {
+      e.preventDefault();
+      try { area.setPointerCapture(e.pointerId); } catch (err) {}
+      gp = { area: area, kind: area.hasAttribute("data-blocks") ? "blocks" : "cells" };
+      gaugeAt(e);
+      return;
+    }
+    var dock = e.target.closest(".dock.reveal");
+    // no pointer capture here: it would take the tap away from the ‹ › buttons
+    if (dock) rub = { dock: dock, x: e.clientX, y: e.clientY, path: 0 };
+  });
+  $detail.addEventListener("pointermove", function (e) {
+    if (gp) { gaugeAt(e); return; }
+    if (!rub) return;
+    var d = Math.hypot(e.clientX - rub.x, e.clientY - rub.y);
+    rub.x = e.clientX; rub.y = e.clientY;
+    rub.path += d;
+    if (rub.path < 10) return;
+    rub.dock.classList.add("rubbing");
+    rub.dock.style.setProperty("--rx", (e.clientX - rub.dock.getBoundingClientRect().left) + "px");
+    revealBy(d / 44);
+  });
+  function endRub(e) {
+    if (gp) {
+      var g = gp;
+      gp = null;
+      if (g.kind === "cells" && e.type === "pointerup" && gauge) {
+        var to = gauge.sid;
+        closePops();
+        if (to !== lastSid) go("#/s/" + to);
+      }
+    }
+    if (rub) {
+      rub.dock.classList.remove("rubbing");
+      if (rub.path >= 10) rvGuard = Date.now() + 350; // a rub is not a tap
+      rub = null;
+    }
+  }
+  $detail.addEventListener("pointerup", endRub);
+  $detail.addEventListener("pointercancel", endRub);
+
   $detail.addEventListener("pointerdown", function (e) {
     var rail = e.target.closest("[data-rail]");
     if (!rail || (e.pointerType === "mouse" && e.button !== 0)) return;
@@ -797,7 +1283,8 @@
   $detail.addEventListener("touchstart", function (e) {
     swipe = null;
     if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
-    if (e.target.closest(".rail, pre, .ety-chain, input, .seek")) return;
+    if (e.target.closest(".rail, pre, .ety-chain, input, .seek, .gauge, .tint, .dock")) return;
+    if ($detail.querySelector(".gauge.open, .tint.open")) return;
     var t = e.touches[0];
     swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };
   }, { passive: true });
@@ -915,6 +1402,12 @@
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === "/") { e.preventDefault(); $q.focus(); $q.select(); return; }
     if (e.key === "Escape" && state.current) { go("#/"); return; }
+    // a hidden sentence: Space clears the next word, Shift+Space hides one again
+    if (e.key === " " && state.current && rv.card && rv.card.isConnected && rv.card.classList.contains("rv")) {
+      e.preventDefault();
+      revealStep(e.shiftKey ? -1 : 1);
+      return;
+    }
     if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
       var btn = $detail.querySelectorAll("[data-go]")[e.key === "ArrowLeft" ? 0 : 1];
       if (btn && !btn.disabled) { e.preventDefault(); go("#/s/" + btn.dataset.go); }
@@ -922,14 +1415,23 @@
   });
 
   // ---------- toggles ----------
-  var $toggleJa = document.getElementById("toggle-ja");
+  var $toggleJa = document.getElementById("toggle-ja"), $toggleEn = document.getElementById("toggle-en");
   function setHideJa(on) {
     document.body.classList.toggle("hide-ja", on);
     $toggleJa.setAttribute("aria-pressed", String(on));
     Array.prototype.forEach.call(document.querySelectorAll(".ja.shown"), function (el) { el.classList.remove("shown"); });
     save("duo.hideJa", on ? "1" : "0");
+    setupReveal(false);
+  }
+  function setHideEn(on) {
+    document.body.classList.toggle("hide-en", on);
+    $toggleEn.setAttribute("aria-pressed", String(on));
+    Array.prototype.forEach.call(document.querySelectorAll(".en.shown"), function (el) { el.classList.remove("shown"); });
+    save("duo.hideEn", on ? "1" : "0");
+    setupReveal(false);
   }
   $toggleJa.addEventListener("click", function () { setHideJa(!document.body.classList.contains("hide-ja")); });
+  $toggleEn.addEventListener("click", function () { setHideEn(!document.body.classList.contains("hide-en")); });
 
   var meta = document.querySelector('meta[name="theme-color"]');
   function applyTheme(theme) {
@@ -945,8 +1447,16 @@
   // ---------- start ----------
   applyTheme(document.documentElement.dataset.theme || "dark");
   setHideJa(load("duo.hideJa") === "1");
+  setHideEn(load("duo.hideEn") === "1");
   renderFilter();
   renderListAnimated();
+  // open where the learner left off last time
+  var last = load("duo.last");
+  if (!/^#\/(w|s|t)\//.test(location.hash) && last && /^#\/(w|s)\/[\w-]+$/.test(last)) {
+    try { history.replaceState(null, "", last); } catch (e) {}
+    document.documentElement.classList.add("no-anim");
+    requestAnimationFrame(function () { requestAnimationFrame(function () { document.documentElement.classList.remove("no-anim"); }); });
+  }
   route();
   window.addEventListener("hashchange", route);
 })();

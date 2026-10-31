@@ -7,8 +7,8 @@
 <meta name="theme-color" content="#0b0d14">
 <title>DUO Reader</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%230b0d14'/%3E%3Crect x='12' y='34' width='40' height='12' rx='3' fill='%23f5cd55' opacity='.6'/%3E%3Ctext x='32' y='42' font-family='Georgia,serif' font-style='italic' font-size='26' fill='%23eef0f7' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/app.css?v=c3c2a6ad64">
-<link rel="stylesheet" href="assets/loader.css?v=e1147764e0">
+<link rel="stylesheet" href="assets/app.css?v=c037ec28ae">
+<link rel="stylesheet" href="assets/loader.css?v=f1f5dd66fa">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -54,6 +54,9 @@
         <button class="icon-btn" id="toggle-ja" type="button" aria-pressed="false" title="日本語を隠す">
             <span aria-hidden="true">あ</span><span class="sr">日本語を隠す</span>
           </button>
+          <button class="icon-btn" id="toggle-en" type="button" aria-pressed="false" title="英語を隠す">
+            <span aria-hidden="true">A</span><span class="sr">英語を隠す</span>
+          </button>
           <button class="icon-btn" id="toggle-theme" type="button" title="ライト／ダーク切替">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
             <span class="sr">ライト／ダーク切替</span>
@@ -64,12 +67,13 @@
       <div class="search">
         <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
         <input id="q" type="search" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false"
-               placeholder="英語・日本語・番号で検索" aria-label="検索">
+               placeholder="英語・日本語・番号・12-22" aria-label="検索">
         <kbd class="search-kbd" aria-hidden="true">/</kbd>
         <button class="search-clear" id="q-clear" type="button" title="検索をクリア" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"/></svg>
           <span class="sr">検索をクリア</span>
         </button>
+        <div class="recent" id="recent" hidden></div>
       </div>
 
       <nav class="tabs" id="tabs" role="tablist" aria-label="表示する種類" data-active="words">
@@ -90,6 +94,6 @@
 </div>
 
 <script src="assets/marks.js?v=e6e75c5b73"></script>
-<script src="assets/loader.js?v=58630318be"></script>
+<script src="assets/loader.js?v=4256f75c1b"></script>
 </body>
 </html>

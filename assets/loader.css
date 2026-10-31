@@ -134,3 +134,16 @@
 }
 .wm-meta { min-height: 1.5em; margin: 0 0 6px; text-align: center; font: 12px var(--mono); color: var(--faint); }
 .wm-meta.error { color: var(--fix); font-family: var(--sans); }
+.wm-colors { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.wm-color {
+  height: 36px; border-radius: 999px; font-size: 12.5px; color: var(--faint);
+  background: var(--pane); box-shadow: var(--glass-inset);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform .35s var(--spring), color .2s, background-color .2s, box-shadow .2s;
+}
+.wm-color:active { transform: scale(.94); }
+.wm-color .cdot { margin-right: 5px; opacity: .4; transition: opacity .2s; }
+.wm-color[data-want="n"] .cdot { display: none; }
+.wm-color[aria-pressed="true"] { color: var(--text); box-shadow: var(--glass-inset), inset 0 0 0 1px var(--glass-edge-a); }
+.wm-color[aria-pressed="true"][data-color] { background: color-mix(in srgb, var(--tint) 24%, transparent); box-shadow: var(--glass-inset), inset 0 0 0 1px color-mix(in srgb, var(--tint) 60%, transparent); }
+.wm-color[aria-pressed="true"] .cdot { opacity: 1; }
