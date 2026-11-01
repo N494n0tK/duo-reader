@@ -769,7 +769,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .results {
     position: absolute; inset: 0;
     display: flex; flex-direction: column; gap: 8px;
-    overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
     border-top: 0; padding: calc(var(--head-h, 240px) + 8px) 14px calc(30px + env(safe-area-inset-bottom));
     scroll-padding-top: var(--head-h, 240px);
   }
@@ -988,7 +988,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
     -webkit-mask-composite: xor; mask-composite: exclude;
     opacity: .8;
   }
-  .dock { touch-action: none; -webkit-user-select: none; user-select: none; }
+  .dock { -webkit-user-select: none; user-select: none; }
+  .dock.reveal { touch-action: none; }
   .dock .nav-btn { width: 48px; height: 48px; background: transparent; box-shadow: none; color: var(--text); }
   .dock .nav-btn:active:not(:disabled) { background: var(--glass-hover); transform: scale(.9); }
   .dock .nav-btn > span { grid-area: 1 / 1; display: grid; place-items: center; transition: opacity .25s var(--ease), transform .5s var(--spring); }

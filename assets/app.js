@@ -1197,10 +1197,16 @@
       return;
     }
     if ((t = e.target.closest(".dock .nav-btn")) && Date.now() < rvGuard) return;
-    if ((t = e.target.closest(".rv .wd")) && rv.b[+t.dataset.k] > 0) {
-      rv.b[+t.dataset.k] = 0;
-      paintReveal();
-      return;
+    // English: just the tapped word. Japanese: anywhere on it shows all of it at once, as it always did
+    if ((t = e.target.closest(".rv .wd, .rv .sentence-ja")) && rv.card) {
+      var nEn = +rv.card.dataset.nen, k;
+      if (t.classList.contains("wd") && +t.dataset.k < nEn) {
+        if (rv.b[+t.dataset.k] > 0) { rv.b[+t.dataset.k] = 0; paintReveal(); return; }
+      } else if (rv.b.slice(nEn).some(function (x) { return x > 0; })) {
+        for (k = nEn; k < rv.b.length; k++) rv.b[k] = 0;
+        paintReveal();
+        return;
+      }
     }
     if (e.target.closest(".dock-num, .card-num")) {
       var now = Date.now();
@@ -1331,7 +1337,8 @@
   $detail.addEventListener("touchstart", function (e) {
     swipe = null;
     if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
-    if (e.target.closest(".rail, pre, .ety-chain, input, .seek, .gauge, .tint, .dock")) return;
+    // the dock swipes like the rest of the page; only while a hidden sentence is being rubbed clear does it keep the finger
+    if (e.target.closest(".rail, pre, .ety-chain, input, .seek, .gauge, .tint, .dock.reveal")) return;
     if ($detail.querySelector(".gauge.open, .tint.open")) return;
     var t = e.touches[0];
     swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };
