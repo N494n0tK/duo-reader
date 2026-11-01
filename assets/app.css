@@ -382,14 +382,25 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .tint-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .62s cubic-bezier(.3, 1.28, .45, 1); }
 .tint.open .tint-panel { grid-template-rows: 1fr; }
 .tint-list { min-height: 0; overflow: hidden; display: grid; justify-items: center; gap: 10px; }
-.tint-list .sw:first-child { margin-top: 4px; }
-.tint-list .sw:last-child { margin-bottom: 10px; }
-.tint-list .sw { opacity: 0; transform: translateY(-10px) scale(.4); transition: opacity .25s var(--ease), transform .55s var(--spring), box-shadow .3s; }
-.tint.open .tint-list .sw { opacity: 1; transform: none; }
-.tint.open .tint-list .sw:nth-child(2) { transition-delay: .04s; }
-.tint.open .tint-list .sw:nth-child(3) { transition-delay: .08s; }
-.tint.open .tint-list .sw:nth-child(4) { transition-delay: .12s; }
-.tint.open .tint-list .sw:active { transform: scale(.82); }
+.tint-sws { display: grid; justify-items: center; gap: inherit; margin-top: 4px; }
+.tint-list > :last-child { margin-bottom: 10px; }
+.tint-sws .sw, .tint-sep, .tint-hide { opacity: 0; transform: translateY(-10px) scale(.4); transition: opacity .25s var(--ease), transform .55s var(--spring), outline-color .25s, background-color .2s, color .2s; }
+.tint.open .tint-sws .sw, .tint.open .tint-sep, .tint.open .tint-hide { opacity: 1; transform: none; }
+.tint.open .tint-sws .sw:nth-child(2) { transition-delay: .04s; }
+.tint.open .tint-sws .sw:nth-child(3) { transition-delay: .08s; }
+.tint.open .tint-sws .sw:nth-child(4) { transition-delay: .12s; }
+.tint.open .tint-sep { transition-delay: .14s; }
+.tint.open .tint-hide[data-hide="ja"] { transition-delay: .16s; }
+.tint.open .tint-hide[data-hide="en"] { transition-delay: .2s; }
+.tint.open .tint-sws .sw:active, .tint.open .tint-hide:active { transform: scale(.82); transition-delay: 0s; }
+.tint-sep { display: block; width: 20px; height: 1px; background: var(--line); }
+/* あ / A : the same blur switches as the header, pressed = hidden */
+.tint-hide {
+  display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
+  font: 600 13px/1 var(--sans); color: var(--muted);
+  background: var(--glass-flat); box-shadow: var(--glass-inset), inset 0 0 0 .5px rgba(255, 255, 255, .18);
+}
+.tint-hide[aria-pressed="true"] { background: var(--marker-soft); color: var(--text); box-shadow: var(--glass-inset), 0 0 0 1px var(--marker-soft); }
 
 /* list: a row swiped to the right shows colored glass on the left */
 .swipe-tray {
@@ -828,8 +839,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   /* while one of them is open, the others step back */
   .detail-top .nav-btn.back { transition: transform .45s var(--spring), opacity .25s var(--ease), background-color .2s, color .2s; }
   .detail-top.seeking .gauge, .detail-top.seeking .tint,
-  .detail-top.gauging .nav-btn.back, .detail-top.gauging .seek, .detail-top.gauging .tint,
-  .detail-top.tinting .gauge { opacity: 0; transform: scale(.86); pointer-events: none; }
+  .detail-top.gauging .nav-btn.back, .detail-top.gauging .seek, .detail-top.gauging .tint { opacity: 0; transform: scale(.86); pointer-events: none; }
   .detail-top.gauging, .detail-top.tinting { z-index: 8; }
 
   /* the position gauge: a glass bar between the magnifier and the color drop */
@@ -906,9 +916,10 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .tint-btn { height: 46px; color: var(--text); }
   .tint.open .tint-cap { border-radius: 23px; background-color: color-mix(in srgb, var(--bg) 62%, transparent); }
   .tint-list { gap: 12px; }
-  .tint-list .sw:first-child { margin-top: 2px; }
-  .tint-list .sw:last-child { margin-bottom: 12px; }
-  .tint-list .sw { width: 32px; height: 32px; }
+  .tint-sws { margin-top: 2px; }
+  .tint-list > :last-child { margin-bottom: 12px; }
+  .tint-list .sw, .tint-hide { width: 32px; height: 32px; }
+  .tint-hide { font-size: 14px; }
   .seek.has-results { border-radius: 26px; background-color: color-mix(in srgb, var(--bg) 66%, transparent); }
   .seek-bar { display: flex; align-items: center; height: 46px; }
   .seek-btn { flex: none; width: 46px; height: 46px; display: grid; place-items: center; color: var(--text); transition: color .3s, transform .35s var(--spring); }

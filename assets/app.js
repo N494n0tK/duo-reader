@@ -505,7 +505,12 @@
     // this page's color: tap and it drops down into the three colors and "none"
     html += '<div class="tint"' + (colorOf(key) ? ' data-color="' + colorOf(key) + '"' : "") + '><div class="tint-cap">' +
       '<button class="tint-btn" type="button" data-tint-open aria-label="' + what + '">' + ICON.drop + "</button>" +
-      '<div class="tint-panel"><div class="tint-list" role="radiogroup" aria-label="' + what + '">' + swatches(colorOf(key)) + "</div></div>" +
+      '<div class="tint-panel"><div class="tint-list"><div class="tint-sws" role="radiogroup" aria-label="' + what + '">' + swatches(colorOf(key)) + "</div>" +
+        // under the colors: blur the Japanese / the English, right from here
+        '<i class="tint-sep" aria-hidden="true"></i>' +
+        '<button type="button" class="tint-hide" data-hide="ja" aria-pressed="' + document.body.classList.contains("hide-ja") + '" aria-label="日本語を隠す">あ</button>' +
+        '<button type="button" class="tint-hide" data-hide="en" aria-pressed="' + document.body.classList.contains("hide-en") + '" aria-label="英語を隠す">A</button>' +
+      "</div></div>" +
     "</div></div>";
     if (opts.home) {
       html += '<button class="nav-btn" data-shuffle title="別の例文"><span class="sr">別の例文</span>' + ICON.shuffle + "</button>";
@@ -1154,7 +1159,10 @@
   $detail.addEventListener("click", function (e) {
     var t, seek = seekEl(), bar = topBar();
     if (seek && seek.classList.contains("open") && !e.target.closest(".seek, [data-back]")) { closeSeek(); return; }
-    if (bar && bar.matches(".gauging, .tinting") && !e.target.closest(".gauge.open, .tint.open")) { closePops(); return; }
+    if (bar && bar.matches(".gauging, .tinting") && !e.target.closest(".gauge.open, .tint.open")) {
+      closePops();
+      if (!e.target.closest(".detail-top [data-back], .detail-top [data-seek-open], .detail-top [data-gauge-open]")) return;
+    }
     if (e.target.closest("[data-seek-open]")) { if (seek.classList.contains("open")) seek.querySelector(".seek-input").focus(); else openSeek(); return; }
     if (e.target.closest("[data-seek-close]")) { closeSeek(); return; }
     if ((t = e.target.closest("[data-seek-recent]"))) {
@@ -1174,6 +1182,11 @@
     if (e.target.closest("[data-gauge-close]")) { closePops(); return; }
     if (e.target.closest(".gauge")) return;
     if (e.target.closest("[data-tint-open]")) { if (e.target.closest(".tint.open")) closePops(); else openTint(); return; }
+    if ((t = e.target.closest("[data-hide]"))) {
+      if (t.dataset.hide === "ja") setHideJa(!document.body.classList.contains("hide-ja"));
+      else setHideEn(!document.body.classList.contains("hide-en"));
+      return;
+    }
     if ((t = e.target.closest("[data-tint]"))) {
       setColor(curKey, t.dataset.tint);
       setTimeout(closePops, 260); // let the choice show before the drop closes
@@ -1451,9 +1464,14 @@
 
   // ---------- toggles ----------
   var $toggleJa = document.getElementById("toggle-ja"), $toggleEn = document.getElementById("toggle-en");
+  function syncHideBtn(which, on) {
+    var b = $detail.querySelector('[data-hide="' + which + '"]');
+    if (b) b.setAttribute("aria-pressed", String(on));
+  }
   function setHideJa(on) {
     document.body.classList.toggle("hide-ja", on);
     $toggleJa.setAttribute("aria-pressed", String(on));
+    syncHideBtn("ja", on);
     Array.prototype.forEach.call(document.querySelectorAll(".ja.shown"), function (el) { el.classList.remove("shown"); });
     save("duo.hideJa", on ? "1" : "0");
     setupReveal(false);
@@ -1461,6 +1479,7 @@
   function setHideEn(on) {
     document.body.classList.toggle("hide-en", on);
     $toggleEn.setAttribute("aria-pressed", String(on));
+    syncHideBtn("en", on);
     Array.prototype.forEach.call(document.querySelectorAll(".en.shown"), function (el) { el.classList.remove("shown"); });
     save("duo.hideEn", on ? "1" : "0");
     setupReveal(false);
