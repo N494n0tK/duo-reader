@@ -883,13 +883,18 @@
   function openTray(row) {
     closeTray(true);
     var el = document.createElement("div");
-    el.className = "swipe-tray";
+    el.className = "swipe-tray dragging";
     el.setAttribute("role", "radiogroup");
     el.setAttribute("aria-label", "例文 " + row.dataset.csid + " の色");
-    el.innerHTML = swatches(colorOf(+row.dataset.csid));
-    el.style.cssText = "top:" + row.offsetTop + "px;left:" + row.offsetLeft + "px;height:" + row.offsetHeight + "px;width:" + TRAY_W + "px";
+    el.innerHTML = '<div class="swipe-tray-in" style="width:' + (TRAY_W - 8) + 'px">' + swatches(colorOf(+row.dataset.csid)) + "</div>";
+    el.style.cssText = "top:" + row.offsetTop + "px;left:" + row.offsetLeft + "px;height:" + row.offsetHeight + "px";
     row.parentNode.insertBefore(el, row);
     tray = { el: el, row: row };
+  }
+  // the glass is exactly as wide as the gap the row leaves (8px short of it)
+  function trayTo(dx) {
+    tray.el.style.width = Math.max(0, dx - 8) + "px";
+    tray.el.style.setProperty("--t", Math.min(1, dx / TRAY_W).toFixed(3));
   }
   function closeTray(now) {
     if (!tray) return;
@@ -897,48 +902,63 @@
     tray = null;
     t.row.classList.remove("swiping");
     t.row.style.transform = "";
-    t.el.classList.remove("open");
+    t.el.classList.remove("open", "dragging");
+    t.el.style.width = "0px";
     t.el.style.setProperty("--t", 0);
+    $results.scrollLeft = 0;
     if (now) t.el.remove();
     else setTimeout(function () { t.el.remove(); }, 450);
   }
   $results.addEventListener("touchstart", function (e) {
     rs = null;
-    if (tray && !e.target.closest(".swipe-tray")) {
+    if (e.touches.length !== 1) return;
+    if (tray && e.target.closest(".swipe-tray")) return;
+    var row = e.target.closest(".row[data-csid]");
+    if (tray && row !== tray.row) {
       // a tap anywhere else just puts the row back
       closeTray();
       noClickUntil = Date.now() + 500;
       return;
     }
-    var row = e.target.closest(".row[data-csid]");
-    if (!row || e.touches.length !== 1 || tray) return;
-    rs = { row: row, x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, on: false };
+    if (!row) return;
+    // base: where the row starts — 0, or TRAY_W when it is already open and is being pushed back
+    rs = { row: row, x: e.touches[0].clientX, y: e.touches[0].clientY, base: tray ? TRAY_W : 0, dx: tray ? TRAY_W : 0, on: false };
   }, { passive: true });
   $results.addEventListener("touchmove", function (e) {
     if (!rs) return;
-    var t = e.touches[0], dx = t.clientX - rs.x, dy = t.clientY - rs.y;
+    var t = e.touches[0], mx = t.clientX - rs.x, my = t.clientY - rs.y;
     if (!rs.on) {
-      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { rs = null; return; }
-      if (dx < -10) { rs = null; return; }
-      if (dx < 10) return;
+      if (Math.abs(my) > 10 && Math.abs(my) >= Math.abs(mx)) { rs = null; return; }
+      if (!rs.base && mx < -10) { rs = null; return; }
+      if (Math.abs(mx) < 10) return;
       rs.on = true;
-      openTray(rs.row);
+      if (!tray) openTray(rs.row);
+      tray.el.classList.remove("open");
+      tray.el.classList.add("dragging");
       rs.row.classList.add("swiping");
     }
     e.preventDefault();
-    rs.dx = dx <= TRAY_W ? Math.max(0, dx) : TRAY_W + (dx - TRAY_W) / 4;
+    var x = rs.base + mx;
+    rs.dx = x <= TRAY_W ? Math.max(0, x) : TRAY_W + (x - TRAY_W) / 4;
     rs.row.style.transform = "translateX(" + rs.dx + "px)";
-    tray.el.style.setProperty("--t", Math.min(1, rs.dx / TRAY_W).toFixed(3));
+    trayTo(rs.dx);
   }, { passive: false });
   function endRowSwipe() {
-    if (!rs || !rs.on) { rs = null; return; }
     var s = rs;
     rs = null;
+    if (!s) return;
+    if (!s.on) {
+      // a tap on the open row puts it back
+      if (s.base) { closeTray(); noClickUntil = Date.now() + 500; }
+      return;
+    }
     noClickUntil = Date.now() + 400;
     s.row.classList.remove("swiping");
-    if (s.dx > TRAY_W * .42 && tray) {
+    if (!tray) return;
+    tray.el.classList.remove("dragging");
+    if (s.dx > TRAY_W * (s.base ? .7 : .42)) {
       s.row.style.transform = "translateX(" + TRAY_W + "px)";
-      tray.el.style.setProperty("--t", 1);
+      trayTo(TRAY_W);
       tray.el.classList.add("open");
     } else closeTray();
   }
