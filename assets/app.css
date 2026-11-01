@@ -211,30 +211,22 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .search-clear:active { transform: scale(.85); }
 .search-clear[hidden] { display: none; }
 
-/* recent searches: drop down under the empty search field */
-.recent {
-  position: absolute; z-index: 7; top: calc(100% + 8px); left: 0; right: 0;
-  padding: 4px 6px 6px; border-radius: 24px;
-  background: var(--glass); background-color: color-mix(in srgb, var(--bg) 72%, transparent);
-  -webkit-backdrop-filter: blur(26px) saturate(180%); backdrop-filter: blur(26px) saturate(180%);
-  box-shadow: var(--glass-inset), var(--glass-shadow), 0 0 0 1px var(--glass-edge-b);
-  transform-origin: 50% 0;
-  animation: recent-in .55s var(--spring) both;
-}
-.recent[hidden] { display: none; }
-.recent-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 2px 12px; font: 11px var(--mono); color: var(--faint); letter-spacing: .04em; }
-.recent-head button { font: 12px var(--sans); color: var(--muted); padding: 4px 8px; border-radius: 999px; }
+/* recent searches: at the top of the list while the search field is empty */
+.recent-list { padding: 4px 4px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.recent-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 6px 8px; font: 11px var(--mono); color: var(--faint); letter-spacing: .04em; }
+.recent-head button { font: 12px var(--sans); color: var(--muted); padding: 4px 10px; border-radius: 999px; }
 .recent-head button:active { background: var(--glass-hover); }
+.recent-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .recent-item {
-  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 16px;
-  text-align: left; font-size: 15px; color: var(--text);
-  animation: rise .4s var(--ease) both; animation-delay: calc(var(--i, 0) * 22ms);
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 7px 13px 7px 10px; border-radius: 999px;
+  font-size: 14px; color: var(--text); background: var(--glass-flat); box-shadow: var(--glass-inset);
+  transition: transform .35s var(--spring), background-color .2s;
 }
-.recent-item + .recent-item { box-shadow: 0 -1px 0 var(--line); }
-.recent-item:hover, .recent-item:active { background: var(--glass-hover); box-shadow: none; }
-.recent-item svg { flex: none; width: 16px; height: 16px; color: var(--faint); }
+.results.enter .recent-item { animation: rise .4s var(--ease) both; animation-delay: calc(var(--i, 0) * 22ms); }
+.recent-item:hover { background: var(--glass-hover); }
+.recent-item:active { transform: scale(.92); }
+.recent-item svg { flex: none; width: 14px; height: 14px; color: var(--faint); }
 .recent-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@keyframes recent-in { from { opacity: 0; transform: translateY(-8px) scale(.96, .7); } }
 
 /* ===== Segmented tabs with a liquid thumb ===== */
 .tabs {
@@ -787,6 +779,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .row[aria-current="true"] { box-shadow: var(--glass-inset), var(--pane-shadow), inset 3px 0 0 var(--marker); }
   .row-word { font-size: 19px; }
   .more { padding: 10px 20px; background: var(--pane); }
+  .recent-list { position: relative; margin: 0; padding: 8px 12px 14px; border: 0; border-radius: 22px; background: var(--pane); box-shadow: var(--glass-inset), var(--pane-shadow); }
+  .recent-item { padding: 8px 14px 8px 11px; font-size: 14.5px; }
 
   /* detail screen: a clear layer — the cards themselves are the glass */
   .pane-detail {

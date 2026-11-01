@@ -48,6 +48,16 @@
     recents = [q].concat(recents.filter(function (x) { return norm(x) !== norm(q); })).slice(0, 10);
     save("duo.recent", JSON.stringify(recents));
   }
+  // a search the learner paused on while typing: "res" then "respect" keeps only "respect",
+  // and backing up from "respect" to "resp" does not push "resp" in front of it
+  function rememberTyped(q) {
+    q = String(q || "").trim();
+    var top = recents[0] ? norm(recents[0]) : "", n = norm(q);
+    if (n.length < 2 && !/^\d/.test(q)) return;
+    if (top && top !== n && top.indexOf(n) === 0) return;
+    if (top && n.indexOf(top) === 0) recents.shift();
+    remember(q);
+  }
 
   // ---------- text helpers ----------
   function esc(s) {
@@ -309,6 +319,13 @@
     return ' data-csid="' + key + '"' + (c ? ' data-color="' + c + '"' : "");
   }
 
+  function recentList() {
+    return '<section class="recent-list" aria-label="最近の検索"><div class="recent-head"><span>最近の検索</span><button type="button" data-recent-clear>消す</button></div>' +
+      '<div class="recent-chips">' + recents.map(function (r, n) {
+        return '<button type="button" class="recent-item" data-recent="' + esc(r) + '" style="--i:' + n + '">' + ICON.clock + "<span>" + esc(r) + "</span></button>";
+      }).join("") + "</div></section>";
+  }
+
   function renderList() {
     var q = norm(state.q), raw = state.q.trim(), range = parseRange(raw);
     var found = { words: searchWords(q, range), sentences: searchSentences(q, range).filter(colorMatch), terms: searchTerms(q) };
@@ -352,6 +369,7 @@
     if (items.length > shown.length) {
       html += '<button class="more" data-more>さらに表示（残り ' + (items.length - shown.length).toLocaleString() + " 件）</button>";
     }
+    if (!raw && recents.length) html = recentList() + html;
     $results.innerHTML = html;
     Array.prototype.forEach.call($results.querySelectorAll(".row"), function (r, n) {
       if (n < 18) r.style.setProperty("--i", n);
@@ -788,22 +806,24 @@
   function syncClear() { $qClear.hidden = !$q.value; }
   $q.addEventListener("input", function () {
     syncClear();
-    syncRecent();
+    rememberSoon();
     clearTimeout(timer);
     timer = setTimeout(applyQuery, 90);
   });
   $qClear.addEventListener("click", function () {
+    if ($q.value.trim() && $results.querySelector(".row")) rememberTyped($q.value);
+    clearTimeout(typedTimer);
     $q.value = "";
     syncClear();
     applyQuery();
     $q.focus();
-    syncRecent();
   });
   $q.addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
       e.preventDefault();
       applyQuery();
-      remember($q.value);
+      clearTimeout(typedTimer);
+      rememberTyped($q.value);
       var first = $results.querySelector(".row");
       if (first) { go(first.dataset.href); $q.blur(); }
     } else if (e.key === "Escape") {
@@ -811,37 +831,13 @@
     }
   });
 
-  // recent searches: they drop down under the empty search field
-  var $recent = document.getElementById("recent");
-  function syncRecent() {
-    var show = document.activeElement === $q && !$q.value && recents.length > 0;
-    if (show && $recent.hidden) {
-      $recent.innerHTML = '<div class="recent-head"><span>最近の検索</span><button type="button" data-recent-clear>消す</button></div>' +
-        recents.map(function (r, n) {
-          return '<button type="button" class="recent-item" data-recent="' + esc(r) + '" style="--i:' + n + '">' + ICON.clock + "<span>" + esc(r) + "</span></button>";
-        }).join("");
-    }
-    $recent.hidden = !show;
+  // remember a search once the typing pauses, and when leaving the field
+  var typedTimer;
+  function rememberSoon() {
+    clearTimeout(typedTimer);
+    typedTimer = setTimeout(function () { if ($q.value.trim() && $results.querySelector(".row")) rememberTyped($q.value); }, 1500);
   }
-  $q.addEventListener("focus", syncRecent);
-  $q.addEventListener("blur", function () { setTimeout(syncRecent, 0); });
-  // keep the keyboard up while choosing from the list
-  $recent.addEventListener("pointerdown", function (e) { e.preventDefault(); });
-  $recent.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-recent]");
-    if (e.target.closest("[data-recent-clear]")) {
-      recents = [];
-      save("duo.recent", "[]");
-      $recent.hidden = true;
-      return;
-    }
-    if (!b) return;
-    $q.value = b.dataset.recent;
-    syncClear();
-    applyQuery();
-    remember($q.value);
-    $q.blur();
-  });
+  $q.addEventListener("blur", function () { if ($q.value.trim() && $results.querySelector(".row")) { clearTimeout(typedTimer); rememberTyped($q.value); } });
 
   $tabs.forEach(function (t) {
     t.addEventListener("click", function () { setTab(t.dataset.tab); });
@@ -861,6 +857,21 @@
 
   $results.addEventListener("click", function (e) {
     if (Date.now() < noClickUntil) return;
+    if (e.target.closest("[data-recent-clear]")) {
+      recents = [];
+      save("duo.recent", "[]");
+      renderList();
+      return;
+    }
+    var rec = e.target.closest("[data-recent]");
+    if (rec) {
+      $q.value = rec.dataset.recent;
+      syncClear();
+      applyQuery();
+      remember($q.value);
+      $q.blur();
+      return;
+    }
     if (e.target.closest(".swipe-tray")) {
       var sw = e.target.closest("[data-tint]");
       if (sw && tray) { setColor(tray.row.dataset.csid, sw.dataset.tint); setTimeout(closeTray, 220); }
