@@ -1,8 +1,8 @@
 // 公開版のアプリ本体（DUOの本文は含まない）を端末に保存し、圏外でも開けるようにする。
 // VERSION と FILES は tools/build_web.py が書き込む。中身が変わると VERSION が変わり、次に開いたときに更新される。
-var VERSION = "974ebb449d0a";
+var VERSION = "e2af19a60939";
 var CACHE = "duo-shell-" + VERSION;
-var FILES = ["./", "./index.html", "./assets/app.css?v=91023ad075", "./assets/app.js?v=1d75acabb7", "./assets/loader.js?v=6a4f76a59f", "./assets/loader.css?v=f1f5dd66fa", "./assets/marks.js?v=e6e75c5b73", "./widget.html", "./assets/widget.js?v=176d0a503b", "./assets/widget.css?v=dbd2568c6f", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
+var FILES = ["./", "./index.html", "./assets/app.css?v=91023ad075", "./assets/app.js?v=ef13659eef", "./assets/loader.js?v=6815370983", "./assets/loader.css?v=f1f5dd66fa", "./assets/marks.js?v=e6e75c5b73", "./widget.html", "./assets/widget.js?v=176d0a503b", "./assets/widget.css?v=dbd2568c6f", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 // 公開直後は配信側に古いファイルが残っていることがあるので、版番号付きのURLで取り直してから保存する
 self.addEventListener("install", function (e) {

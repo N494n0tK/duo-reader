@@ -36,10 +36,10 @@
   }
 
   // ---------- the learner's own marks, kept on this device ----------
-  // sentence colors: { "12": "r", ... }  r / y / g
+  // colors: { "12": "r", "w40": "g", ... }  r / y / g — a sentence by its number, a word by "w" + its id
   var COLORS = [["r", "赤"], ["y", "黄"], ["g", "緑"]];
   var colors = loadJson("duo.colors", {});
-  function colorOf(sid) { return colors[sid] || ""; }
+  function colorOf(key) { return colors[key] || ""; }
   // recent searches, newest first
   var recents = loadJson("duo.recent", []).filter(function (x) { return typeof x === "string"; }).slice(0, 10);
   function remember(q) {
@@ -304,9 +304,9 @@
   function colorMatch(s) {
     return !state.color || (state.color === "-" ? !colors[s.id] : colors[s.id] === state.color);
   }
-  function colorAttrs(sid) {
-    var c = colorOf(sid);
-    return ' data-csid="' + sid + '"' + (c ? ' data-color="' + c + '"' : "");
+  function colorAttrs(key) {
+    var c = colorOf(key);
+    return ' data-csid="' + key + '"' + (c ? ' data-color="' + c + '"' : "");
   }
 
   function renderList() {
@@ -329,7 +329,7 @@
       html += "</p>";
     } else if (state.tab === "words") {
       html = shown.map(function (w) {
-        return '<button class="row" role="listitem" data-href="#/w/' + w.id + '"' + colorAttrs(w.sid) + (state.current === "w" + w.id ? ' aria-current="true"' : "") + ">" +
+        return '<button class="row" role="listitem" data-href="#/w/' + w.id + '"' + colorAttrs("w" + w.id) + (state.current === "w" + w.id ? ' aria-current="true"' : "") + ">" +
           '<span class="row-num">' + w.id + "</span>" +
           '<span class="row-head"><span class="row-word en">' + markQuery(w.word, raw) + '</span><span class="row-pos">' + esc(posLabel(w.pos)) + "</span></span>" +
           '<span class="row-sub ja">' + markQuery(w.meaning, raw) + "</span></button>";
@@ -437,7 +437,7 @@
     return !body.contains("hide-en") ? { text: s.en, en: true } : !body.contains("hide-ja") ? { text: s.ja, en: false } : { text: "", en: false };
   }
 
-  var lastSid = null, lastP = 0;
+  var lastSid = null, lastP = 0, curKey = "";
 
   function renderDetail(kind, id, opts) {
     opts = opts || {};
@@ -448,6 +448,8 @@
     var same = !opts.home && !opts.shuffle && sid === lastSid;
     var dir = same ? "same" : lastSid === null ? "" : opts.shuffle || sid > lastSid ? "dir-next" : "dir-prev";
     var p = (sid - 1) / (SENTENCES.length - 1);
+    // on a word's page the color belongs to the word, as in the list
+    var key = word ? "w" + word.id : String(sid), what = word ? "この単語の色" : "この例文の色";
 
     var html = '<article class="detail ' + dir + '">';
 
@@ -482,10 +484,10 @@
     }
     html += '<span class="eyebrow">' + (opts.home ? "ランダムな一文" : word ? "単語 " + word.id : "例文") + "</span>";
     html += '<span class="spacer"></span>';
-    // this sentence's color: tap and it drops down into the three colors and "none"
-    html += '<div class="tint"' + (colorOf(sid) ? ' data-color="' + colorOf(sid) + '"' : "") + '><div class="tint-cap">' +
-      '<button class="tint-btn" type="button" data-tint-open aria-label="この例文の色">' + ICON.drop + "</button>" +
-      '<div class="tint-panel"><div class="tint-list" role="radiogroup" aria-label="この例文の色">' + swatches(colorOf(sid)) + "</div></div>" +
+    // this page's color: tap and it drops down into the three colors and "none"
+    html += '<div class="tint"' + (colorOf(key) ? ' data-color="' + colorOf(key) + '"' : "") + '><div class="tint-cap">' +
+      '<button class="tint-btn" type="button" data-tint-open aria-label="' + what + '">' + ICON.drop + "</button>" +
+      '<div class="tint-panel"><div class="tint-list" role="radiogroup" aria-label="' + what + '">' + swatches(colorOf(key)) + "</div></div>" +
     "</div></div>";
     if (opts.home) {
       html += '<button class="nav-btn" data-shuffle title="別の例文"><span class="sr">別の例文</span>' + ICON.shuffle + "</button>";
@@ -507,7 +509,7 @@
         '<p class="meaning ja">' + esc(word.meaning) + "</p></header>";
     }
 
-    html += '<section class="sentence-card' + (same ? " static" : "") + '"' + colorAttrs(sid) + ' aria-label="例文 ' + sid + '">' +
+    html += '<section class="sentence-card' + (same ? " static" : "") + '"' + colorAttrs(key) + ' data-sid="' + sid + '" aria-label="例文 ' + sid + '">' +
       '<div class="card-head"><span class="card-num">#' + pad3(sid) + '</span><span class="card-of">/ ' + SENTENCES.length + "</span></div>" +
       '<p class="sentence-en" lang="en">' + renderSentenceHtml(sid, word && word.id) + "</p>" +
       '<p class="sentence-ja">' + esc(s.ja) + "</p></section>";
@@ -552,6 +554,7 @@
     rail.style.setProperty("--p", p);
     if (gauge) gauge.style.setProperty("--p", p);
     lastSid = sid;
+    curKey = key;
     lastP = p;
     setupReveal(same);
   }
@@ -597,13 +600,13 @@
     return parts.length;
   }
   function setupReveal(keep) {
-    var card = $detail.querySelector(".sentence-card[data-csid]");
+    var card = $detail.querySelector(".sentence-card[data-sid]");
     if (!card) return;
     var en = card.querySelector(".sentence-en"), ja = card.querySelector(".sentence-ja");
     if (!en.querySelector(".wd")) { card.dataset.nen = wrapEnglish(en); card.dataset.nja = wrapJapanese(ja, +card.dataset.nen); }
     var nEn = +card.dataset.nen, nJa = +card.dataset.nja, body = document.body.classList;
     var hideEn = body.contains("hide-en"), hideJa = body.contains("hide-ja");
-    var sid = +card.dataset.csid, b = [];
+    var sid = +card.dataset.sid, b = [];
     for (var k = 0; k < nEn + nJa; k++) b.push((k < nEn ? hideEn : hideJa) ? 1 : 0);
     // moving between the words of the same sentence keeps what was already cleared
     if (keep && rv.sid === sid && rv.b.length === b.length) b = b.map(function (x, i) { return Math.min(x, rv.b[i]); });
@@ -860,7 +863,7 @@
     if (Date.now() < noClickUntil) return;
     if (e.target.closest(".swipe-tray")) {
       var sw = e.target.closest("[data-tint]");
-      if (sw && tray) { setColor(+tray.row.dataset.csid, sw.dataset.tint); setTimeout(closeTray, 220); }
+      if (sw && tray) { setColor(tray.row.dataset.csid, sw.dataset.tint); setTimeout(closeTray, 220); }
       return;
     }
     var row = e.target.closest("[data-href]");
@@ -885,8 +888,8 @@
     var el = document.createElement("div");
     el.className = "swipe-tray dragging";
     el.setAttribute("role", "radiogroup");
-    el.setAttribute("aria-label", "例文 " + row.dataset.csid + " の色");
-    el.innerHTML = '<div class="swipe-tray-in" style="width:' + (TRAY_W - 8) + 'px">' + swatches(colorOf(+row.dataset.csid)) + "</div>";
+    el.setAttribute("aria-label", (row.dataset.csid.charAt(0) === "w" ? "単語 " + row.dataset.csid.slice(1) : "例文 " + row.dataset.csid) + " の色");
+    el.innerHTML = '<div class="swipe-tray-in" style="width:' + (TRAY_W - 8) + 'px">' + swatches(colorOf(row.dataset.csid)) + "</div>";
     el.style.cssText = "top:" + row.offsetTop + "px;left:" + row.offsetLeft + "px;height:" + row.offsetHeight + "px";
     row.parentNode.insertBefore(el, row);
     tray = { el: el, row: row };
@@ -1066,15 +1069,16 @@
     el.classList.add("open");
     topBar().classList.add("tinting");
   }
-  function setColor(sid, c) {
-    if (c) colors[sid] = c; else delete colors[sid];
+  function setColor(key, c) {
+    key = String(key);
+    if (c) colors[key] = c; else delete colors[key];
     save("duo.colors", JSON.stringify(colors));
-    // repaint everything that shows this sentence's color, in place
-    Array.prototype.forEach.call(document.querySelectorAll('[data-csid="' + sid + '"]'), function (el) {
+    // repaint everything that shows this sentence's (or word's) color, in place
+    Array.prototype.forEach.call(document.querySelectorAll('[data-csid="' + key + '"]'), function (el) {
       if (c) el.dataset.color = c; else delete el.dataset.color;
     });
     var tint = $detail.querySelector(".tint");
-    if (tint && sid === lastSid) {
+    if (tint && key === curKey) {
       if (c) tint.dataset.color = c; else delete tint.dataset.color;
       Array.prototype.forEach.call(tint.querySelectorAll(".sw"), function (sw) { sw.setAttribute("aria-checked", String(sw.dataset.tint === c)); });
     }
@@ -1160,7 +1164,7 @@
     if (e.target.closest(".gauge")) return;
     if (e.target.closest("[data-tint-open]")) { if (e.target.closest(".tint.open")) closePops(); else openTint(); return; }
     if ((t = e.target.closest("[data-tint]"))) {
-      setColor(lastSid, t.dataset.tint);
+      setColor(curKey, t.dataset.tint);
       setTimeout(closePops, 260); // let the choice show before the drop closes
       return;
     }
