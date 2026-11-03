@@ -161,8 +161,9 @@
       }).join("") + '</ul><p class="ety-credit">発音は Wiktionary（CC BY-SA 4.0）より</p></section>';
   }
 
-  // ---------- explanations: ChatGPT writes notes/s001.md … into the private repository duo-notes ----------
-  // One file per sentence. A headword's part starts with a heading that carries its number ("## 0123 rare").
+  // ---------- explanations: ChatGPT writes notes/s001.json … into the private repository duo-notes ----------
+  // One file per sentence, in the "duo-note/1" shape (AI-SKILLs duo-deep-research/duo-note.schema.json):
+  // a short look at the sentence, then a full card for each headword. A word's page shows only its own card.
   // The key to read the repository stays on this device; what was read is kept so it shows offline.
   var NOTES_URL = "https://api.github.com/repos/N494n0tK/duo-notes/contents/notes/";
   var notesKey = load("duo.notesKey") || "";
@@ -202,7 +203,7 @@
   function fetchNote(sid) {
     var old = notes[sid], headers = { Authorization: "Bearer " + notesKey, Accept: "application/vnd.github.raw+json" };
     if (old && old.etag) headers["If-None-Match"] = old.etag;
-    return fetch(NOTES_URL + "s" + pad3(sid) + ".md", { headers: headers, cache: "no-store" }).then(function (res) {
+    return fetch(NOTES_URL + "s" + pad3(sid) + ".json", { headers: headers, cache: "no-store" }).then(function (res) {
       if (res.status === 304) return old;
       if (res.status === 401 || res.status === 403) throw new Error("key");
       if (res.status !== 200 && res.status !== 404) throw new Error("net");
@@ -215,91 +216,127 @@
     });
   }
 
-  // the part of a sentence's note about one headword: from its numbered heading to the next heading as big
-  function wordPart(text, id) {
-    var out = [], level = 0, has = new RegExp("(^|\\D)" + id + "(\\D|$)");
-    text.split("\n").forEach(function (line) {
-      var m = line.match(/^(#{1,6})\s+(.*)$/);
-      if (m && level && m[1].length <= level) level = 0;
-      if (m && !level && has.test(m[2])) level = m[1].length;
-      if (level) out.push(line);
-    });
-    return out.join("\n").trim();
-  }
-
-  // a small Markdown reader: headings, paragraphs, lists, tables, quotes, code, bold, italic, links
+  // inline marks inside the written text: **bold** (drawn as a marker), `code`, [name](https://…)
   function mdInline(s) {
     var codes = [];
-    s = esc(s.replace(/`([^`]+)`/g, function (_, c) { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; }));
+    s = esc(String(s == null ? "" : s).replace(/`([^`]+)`/g, function (_, c) { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; }));
     s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
     s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*\w])\*(?![\s*])(.+?)\*(?!\w)/g, "$1<em>$2</em>");
     return s.replace(/\u0000(\d+)\u0000/g, function (_, i) { return "<code>" + esc(codes[+i]) + "</code>"; });
   }
-  var MD_LIST = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/, MD_RULE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
-  function mdCells(line) {
-    return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map(function (c) { return mdInline(c.trim().replace(/\\\|/g, "|")); });
+  function list(x) { return Array.isArray(x) ? x.filter(function (v) { return v && typeof v === "object" || typeof v === "string"; }) : []; }
+  function parseNote(text) {
+    try { var n = JSON.parse(text); return n && typeof n === "object" && Array.isArray(n.words) ? n : null; } catch (e) { return null; }
   }
-  function md(text) {
-    var lines = String(text).replace(/\r\n?/g, "\n").split("\n"), out = "", para = [], i = 0, m;
-    function flush() { if (para.length) out += "<p>" + para.map(mdInline).join("<br>") + "</p>"; para = []; }
-    while (i < lines.length) {
-      var line = lines[i];
-      if (/^\s*```/.test(line)) {
-        flush();
-        var code = [];
-        for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) code.push(lines[i]);
-        out += "<pre>" + esc(code.join("\n")) + "</pre>";
-        i++;
-      } else if (!line.trim()) {
-        flush(); i++;
-      } else if ((m = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/))) {
-        flush();
-        out += "<h" + Math.min(6, m[1].length + 2) + ">" + mdInline(m[2]) + "</h" + Math.min(6, m[1].length + 2) + ">";
-        i++;
-      } else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
-        flush(); out += "<hr>"; i++;
-      } else if (/^\s*>/.test(line)) {
-        flush();
-        var quote = [];
-        for (; i < lines.length && /^\s*>/.test(lines[i]); i++) quote.push(lines[i].replace(/^\s*>\s?/, ""));
-        out += "<blockquote>" + md(quote.join("\n")) + "</blockquote>";
-      } else if (line.indexOf("|") > -1 && MD_RULE.test(lines[i + 1] || "")) {
-        flush();
-        var head = mdCells(line), rows = [];
-        for (i += 2; i < lines.length && lines[i].indexOf("|") > -1 && lines[i].trim(); i++) rows.push(mdCells(lines[i]));
-        out += '<div class="note-scroll"><table><thead><tr><th>' + head.join("</th><th>") + "</th></tr></thead><tbody>" +
-          rows.map(function (r) { return "<tr><td>" + r.join("</td><td>") + "</td></tr>"; }).join("") + "</tbody></table></div>";
-      } else if (MD_LIST.test(line)) {
-        flush();
-        var stack = [], html = "";
-        for (; i < lines.length; i++) {
-          var ln = lines[i], li = ln.match(MD_LIST);
-          if (!ln.trim()) {
-            if (MD_LIST.test(lines[i + 1] || "") || /^\s+\S/.test(lines[i + 1] || "")) continue;
-            break;
-          }
-          if (!li) {
-            if (!/^\s/.test(ln)) break;
-            html += "<br>" + mdInline(ln.trim());
-            continue;
-          }
-          var ind = li[1].replace(/\t/g, "    ").length, tag = /\d/.test(li[2]) ? "ol" : "ul";
-          while (stack.length && ind < stack[stack.length - 1].ind) html += "</li></" + stack.pop().tag + ">";
-          var top = stack[stack.length - 1];
-          if (!top || ind > top.ind) {
-            stack.push({ ind: ind, tag: tag });
-            html += "<" + tag + (tag === "ol" && parseInt(li[2], 10) > 1 ? ' start="' + parseInt(li[2], 10) + '"' : "") + "><li>";
-          } else html += "</li><li>";
-          html += mdInline(li[3]);
-        }
-        while (stack.length) html += "</li></" + stack.pop().tag + ">";
-        out += html;
-      } else {
-        para.push(line.trim()); i++;
-      }
+
+  var ROLE_NAMES = { S: "主語", V: "動詞", O: "目的語", C: "補語", M: "修飾", "接続": "接続" };
+  var SURE = { "確実": "sure", "有力": "likely", "諸説あり": "split", "不明": "unknown" };
+  var KIN = { "派生語": "derived", "同根語": "cognate", "別語源": "false" };
+  // which part of a word card is open; kept while moving between words, so the learner stays on "語源" if they like it
+  var ntTab = "ety", ntWord = {};
+
+  function exampleHtml(x) {
+    if (!x || !x.en) return "";
+    return '<p class="nt-ex"><span class="nt-ex-en" lang="en">' + mdInline(x.en) + '</span><span class="nt-ex-ja">' + mdInline(x.ja) + "</span></p>";
+  }
+  function sourcesHtml(src) {
+    src = list(src).filter(function (x) { return /^https?:\/\//.test(x.url || ""); });
+    if (!src.length) return "";
+    return '<details class="nt-src"><summary>確認した資料 ' + src.length + "</summary><ul>" + src.map(function (x) {
+      return '<li><a href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.name || x.url) + "</a></li>";
+    }).join("") + "</ul></details>";
+  }
+  function duoWordId(text) {
+    var t = String(text || "").toLowerCase().trim(), w = WORDS.filter(function (w) { return w.word.toLowerCase() === t; })[0];
+    return w ? w.id : "";
+  }
+
+  // one headword: its core image up top, then a liquid segmented control over the parts that were written
+  function wordCardHtml(w) {
+    var ety = w.etymology && typeof w.etymology === "object" ? w.etymology : {}, steps = list(ety.steps), parts = list(w.parts);
+    var panes = [];
+    if (steps.length || parts.length || ety.story) {
+      panes.push(["ety", "語源",
+        (parts.length ? '<div class="nw-parts">' + parts.map(function (x, i) {
+          return (i ? '<i class="nw-plus" aria-hidden="true">+</i>' : "") + '<span class="nw-part"><b lang="en">' + esc(x.part) + "</b><small>" + esc(x.meaning) + "</small></span>";
+        }).join("") + "</div>" : "") +
+        (steps.length ? '<ol class="nw-steps">' + steps.map(function (x, i) {
+          return '<li style="--i:' + i + '"' + (i === steps.length - 1 ? ' class="now"' : "") + '><span class="nw-lang">' + esc(x.lang) + '</span><span class="nw-form" lang="und">' + esc(x.form) + "</span>" +
+            (x.meaning ? '<span class="nw-gloss">' + esc(x.meaning) + "</span>" : "") + "</li>";
+        }).join("") + "</ol>" : "") +
+        (ety.story ? '<p class="nw-story">' + mdInline(ety.story) + "</p>" : "")]);
     }
-    flush();
-    return out;
+    var senses = list(w.senses);
+    if (senses.length) {
+      panes.push(["sense", "意味", '<ol class="nw-senses">' + senses.map(function (x, i) {
+        return '<li style="--i:' + i + '"><b>' + esc(x.label) + "</b>" + (x.note ? "<span>" + mdInline(x.note) + "</span>" : "") + exampleHtml(x.example) + "</li>";
+      }).join("") + "</ol>" + (senses.length > 1 ? '<p class="nw-axis"><span>具体</span><i></i><span>抽象</span></p>' : "")]);
+    }
+    var fam = list(w.family);
+    if (fam.length) {
+      panes.push(["family", "仲間", '<div class="nw-family">' + fam.map(function (x, i) {
+        var id = duoWordId(x.word), tag = id ? "button" : "div";
+        return "<" + tag + ' class="nw-fam" data-kin="' + (KIN[x.relation] || "") + '" style="--i:' + i + '"' + (id ? ' type="button" data-href="#/w/' + id + '"' : "") + ">" +
+          '<span class="nw-kin">' + esc(x.relation || "") + "</span>" +
+          '<b lang="en">' + esc(x.word) + "</b>" + (x.meaning ? "<span>" + esc(x.meaning) + "</span>" : "") +
+          (x.note ? "<small>" + mdInline(x.note) + "</small>" : "") + "</" + tag + ">";
+      }).join("") + "</div>"]);
+    }
+    var cmp = list(w.compare);
+    if (cmp.length) {
+      panes.push(["compare", "使い分け", cmp.map(function (x, i) {
+        return '<div class="nw-cmp" style="--i:' + i + '"><p class="nw-vs"><b lang="en">' + esc(w.word) + '</b><i aria-hidden="true">⇄</i><b lang="en">' + esc(x.word) + "</b></p>" +
+          "<p>" + mdInline(x.diff) + "</p>" + exampleHtml(x.example) + "</div>";
+      }).join("")]);
+    }
+    var ex = list(w.examples);
+    if (ex.length) panes.push(["examples", "例文", '<div class="nw-examples">' + ex.map(exampleHtml).join("") + "</div>"]);
+
+    var open = panes.some(function (p) { return p[0] === ntTab; }) ? ntTab : panes.length ? panes[0][0] : "";
+    var k = 0;
+    panes.forEach(function (p, i) { if (p[0] === open) k = i; });
+    var tips = list(w.pitfalls).filter(function (x) { return typeof x === "string"; });
+    return '<article class="nw" data-wid="' + esc(w.id) + '">' +
+      '<header class="nw-head">' +
+        '<div class="nw-title"><span class="nw-id">' + esc(w.id) + '</span><h3 class="nw-word" lang="en">' + esc(w.word) + "</h3>" +
+          (ety.certainty ? '<span class="nw-sure" data-sure="' + (SURE[ety.certainty] || "") + '">語源 ' + esc(ety.certainty) + "</span>" : "") + "</div>" +
+        (w.core ? '<p class="nw-core"><span>' + esc(w.core) + "</span></p>" : "") +
+        (w.meaning ? '<p class="nw-meaning">' + mdInline(w.meaning) + "</p>" : "") +
+      "</header>" +
+      (panes.length > 1 ? '<div class="nw-tabs" role="tablist" style="--n:' + panes.length + ";--k:" + k + '"><span class="nw-thumb" aria-hidden="true"></span>' +
+        panes.map(function (p) { return '<button type="button" class="nw-tab" role="tab" data-nt-tab="' + p[0] + '" aria-selected="' + (p[0] === open) + '">' + p[1] + "</button>"; }).join("") + "</div>" : "") +
+      panes.map(function (p) { return '<div class="nw-pane" data-pane="' + p[0] + '"' + (p[0] === open ? "" : " hidden") + ">" + (panes.length === 1 ? '<p class="nw-pane-title">' + p[1] + "</p>" : "") + p[2] + "</div>"; }).join("") +
+      (tips.length ? '<div class="nw-call nw-warn"><b>注意</b><ul>' + tips.map(function (x) { return "<li>" + mdInline(x) + "</li>"; }).join("") + "</ul></div>" : "") +
+      (w.memory ? '<div class="nw-call nw-memo"><b>覚え方</b><p>' + mdInline(w.memory) + '</p><small>覚えるためのイメージで、語源の史実とは別です</small></div>' : "") +
+      sourcesHtml(w.sources) +
+    "</article>";
+  }
+
+  // the sentence: what it says, its skeleton, the few points worth a word, then its headwords one at a time
+  function sentenceNoteHtml(n, sid) {
+    var words = list(n.words), pick = 0;
+    words.forEach(function (w, i) { if (w.id === ntWord[sid]) pick = i; });
+    var html = n.gist ? '<p class="nt-gist">' + mdInline(n.gist) + "</p>" : "";
+    var parts = list(n.structure);
+    if (parts.length) {
+      html += '<div class="nt-struct">' + parts.map(function (x, i) {
+        return '<span class="nt-chunk" data-role="' + esc(x.role) + '" style="--i:' + i + '"><b title="' + esc(ROLE_NAMES[x.role] || x.role) + '">' + esc(x.role) + '</b><span lang="en">' + esc(x.text) + "</span>" +
+          (x.note ? "<small>" + esc(x.note) + "</small>" : "") + "</span>";
+      }).join("") + "</div>";
+    }
+    var points = list(n.grammar);
+    if (points.length) {
+      html += '<div class="nt-points">' + points.map(function (x) {
+        return '<details class="nt-point"><summary>' + esc(x.title) + "</summary><div><p>" + mdInline(x.body) + "</p>" + exampleHtml(x.example) + "</div></details>";
+      }).join("") + "</div>";
+    }
+    if (words.length) {
+      html += '<div class="nt-words" role="tablist" aria-label="見出し語">' + words.map(function (w, i) {
+        return '<button type="button" class="nt-wtab" role="tab" data-nt-word="' + i + '" aria-selected="' + (i === pick) + '"><small>' + esc(w.id) + '</small><span lang="en">' + esc(w.word) + "</span></button>";
+      }).join("") + "</div>";
+      html += '<div class="nt-wordpane">' + wordCardHtml(words[pick]) + "</div>";
+    }
+    return '<div class="nt">' + html + sourcesHtml(n.sources) + "</div>";
   }
 
   function noteCard(sid, word) {
@@ -319,9 +356,14 @@
     else if (!rec) html = '<p class="note-msg">' + (state === "error" ? "解説を読めませんでした。電波のあるところで開き直してください。" : state === "key" ? "" : "読み込んでいます…") + "</p>";
     else if (!rec.text.trim()) html = '<p class="note-msg">この例文の解説はまだありません。</p>';
     else {
-      var part = id ? wordPart(rec.text, id) : rec.text;
-      html = part ? '<div class="note-md">' + md(part) + "</div>" : '<p class="note-msg">この単語の解説はまだありません。</p>';
-      if (id) html += '<button type="button" class="note-all" data-href="#/s/' + sid + '">#' + pad3(sid) + " の解説をすべて読む</button>";
+      var n = parseNote(rec.text);
+      if (!n) html = '<p class="note-msg note-warn">解説ファイルの形が崩れていて表示できません。ChatGPT に「s' + pad3(sid) + '.json を duo-note.schema.json に合わせて直して」と頼んでください。</p>';
+      else if (!id) html = sentenceNoteHtml(n, sid);
+      else {
+        var w = list(n.words).filter(function (x) { return x.id === id; })[0];
+        html = (w ? wordCardHtml(w) : '<p class="note-msg">この単語の解説はまだありません。</p>') +
+          '<button type="button" class="note-all" data-href="#/s/' + sid + '">#' + pad3(sid) + " の文の解説へ</button>";
+      }
     }
     if (state === "key") html = '<p class="note-msg note-warn">合鍵が使えません（期限切れか、duo-notes を読む許可がありません）。下の「合鍵を入れ直す」から入れ直してください。</p>' + html;
     if (notesKey) html += '<button type="button" class="note-rekey" data-note-rekey>合鍵を入れ直す</button>';
@@ -1386,6 +1428,24 @@
     if ((t = e.target.closest("[data-spoiler]")) && !t.classList.contains("shown")) { t.classList.add("shown"); return; }
     // while the sentence is hidden its explanation is blurred too; a tap shows it
     if ((t = e.target.closest(".note-body")) && !t.classList.contains("shown") && document.body.matches(".hide-en, .hide-ja")) { t.classList.add("shown"); e.preventDefault(); return; }
+    if ((t = e.target.closest("[data-nt-word]"))) {
+      var nc = t.closest(".note-card"), nsid = +nc.dataset.note, nn = notes[nsid] && parseNote(notes[nsid].text), nw = nn && list(nn.words)[+t.dataset.ntWord];
+      if (!nw) return;
+      ntWord[nsid] = nw.id;
+      Array.prototype.forEach.call(nc.querySelectorAll("[data-nt-word]"), function (b) { b.setAttribute("aria-selected", b === t); });
+      nc.querySelector(".nt-wordpane").innerHTML = wordCardHtml(nw);
+      return;
+    }
+    if ((t = e.target.closest("[data-nt-tab]"))) {
+      var card = t.closest(".nw"), tabs = card.querySelectorAll("[data-nt-tab]");
+      ntTab = t.dataset.ntTab;
+      Array.prototype.forEach.call(tabs, function (b, i) {
+        b.setAttribute("aria-selected", b === t);
+        if (b === t) t.parentNode.style.setProperty("--k", i);
+      });
+      Array.prototype.forEach.call(card.querySelectorAll(".nw-pane"), function (p) { p.hidden = p.dataset.pane !== ntTab; });
+      return;
+    }
     if (e.target.closest("[data-note-rekey]")) {
       var nb = e.target.closest(".note-body");
       nb.innerHTML = keyForm();
@@ -1512,7 +1572,7 @@
     swipe = null;
     if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
     // the dock swipes like the rest of the page; only while a hidden sentence is being rubbed clear does it keep the finger
-    if (e.target.closest(".rail, pre, input, .note-scroll, .seek, .gauge, .tint, .dock.reveal")) return;
+    if (e.target.closest(".rail, pre, input, .seek, .gauge, .tint, .dock.reveal")) return;
     if ($detail.querySelector(".gauge.open, .tint.open")) return;
     var t = e.touches[0];
     swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };
