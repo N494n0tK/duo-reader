@@ -579,6 +579,25 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 
 /* the sentence: gist, skeleton, short points, then one headword at a time */
 .nt { display: grid; gap: 16px; margin-top: 6px; }
+.nt-fold {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  padding: 8px 6px 8px 14px; border-radius: 999px; background: var(--glass-flat); box-shadow: var(--glass-inset);
+  font-size: 13px; font-weight: 600; color: var(--muted); transition: transform .35s var(--spring);
+}
+.nt-fold:active { transform: scale(.97); }
+.nt-chev {
+  flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--glass-flat); box-shadow: var(--glass-inset);
+}
+.nt-chev::before {
+  content: ""; width: 7px; height: 7px; margin-top: 4px; border-right: 2px solid var(--marker); border-bottom: 2px solid var(--marker);
+  transform: rotate(225deg); transition: transform .45s var(--spring), margin .45s var(--spring);
+}
+.nt-sent.closed .nt-chev::before { transform: rotate(45deg); margin-top: -4px; }
+.nt-sent-panel { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .55s var(--spring), opacity .35s; }
+.nt-sent.closed .nt-sent-panel { grid-template-rows: 0fr; opacity: 0; }
+.nt-sent-in { display: grid; gap: 16px; min-height: 0; overflow: hidden; padding-top: 14px; transition: padding .55s var(--spring); }
+.nt-sent.closed .nt-sent-in { padding-top: 0; visibility: hidden; transition: padding .55s var(--spring), visibility 0s .55s; }
 .nt-gist { margin: 0; font-size: 17px; line-height: 1.7; font-weight: 600; }
 .nt-struct { display: flex; flex-wrap: wrap; gap: 8px; }
 .nt-chunk {

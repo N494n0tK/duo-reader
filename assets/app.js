@@ -234,6 +234,8 @@
   var KIN = { "派生語": "derived", "同根語": "cognate", "別語源": "false" };
   // which part of a word card is open; kept while moving between words, so the learner stays on "語源" if they like it
   var ntTab = "ety", ntWord = {};
+  // the look at the whole sentence can be folded away with the v button; it stays folded on the next sentence too
+  var ntSentOpen = load("duo.ntSent") !== "0";
 
   function exampleHtml(x) {
     if (!x || !x.en) return "";
@@ -330,13 +332,19 @@
         return '<details class="nt-point"><summary>' + esc(x.title) + "</summary><div><p>" + mdInline(x.body) + "</p>" + exampleHtml(x.example) + "</div></details>";
       }).join("") + "</div>";
     }
+    html += sourcesHtml(n.sources);
+    if (html) {
+      html = '<div class="nt-sent' + (ntSentOpen ? "" : " closed") + '">' +
+        '<button type="button" class="nt-fold" data-nt-fold aria-expanded="' + ntSentOpen + '"><span>文の解説</span><i class="nt-chev" aria-hidden="true"></i></button>' +
+        '<div class="nt-sent-panel"><div class="nt-sent-in">' + html + "</div></div></div>";
+    }
     if (words.length) {
       html += '<div class="nt-words" role="tablist" aria-label="見出し語">' + words.map(function (w, i) {
         return '<button type="button" class="nt-wtab" role="tab" data-nt-word="' + i + '" aria-selected="' + (i === pick) + '"><small>' + esc(w.id) + '</small><span lang="en">' + esc(w.word) + "</span></button>";
       }).join("") + "</div>";
       html += '<div class="nt-wordpane">' + wordCardHtml(words[pick]) + "</div>";
     }
-    return '<div class="nt">' + html + sourcesHtml(n.sources) + "</div>";
+    return '<div class="nt">' + html + "</div>";
   }
 
   function noteCard(sid, word) {
@@ -1428,6 +1436,13 @@
     if ((t = e.target.closest("[data-spoiler]")) && !t.classList.contains("shown")) { t.classList.add("shown"); return; }
     // while the sentence is hidden its explanation is blurred too; a tap shows it
     if ((t = e.target.closest(".note-body")) && !t.classList.contains("shown") && document.body.matches(".hide-en, .hide-ja")) { t.classList.add("shown"); e.preventDefault(); return; }
+    if ((t = e.target.closest("[data-nt-fold]"))) {
+      ntSentOpen = !ntSentOpen;
+      save("duo.ntSent", ntSentOpen ? "1" : "0");
+      t.parentNode.classList.toggle("closed", !ntSentOpen);
+      t.setAttribute("aria-expanded", ntSentOpen);
+      return;
+    }
     if ((t = e.target.closest("[data-nt-word]"))) {
       var nc = t.closest(".note-card"), nsid = +nc.dataset.note, nn = notes[nsid] && parseNote(notes[nsid].text), nw = nn && list(nn.words)[+t.dataset.ntWord];
       if (!nw) return;
