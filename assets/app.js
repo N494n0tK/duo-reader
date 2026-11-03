@@ -144,54 +144,206 @@
     return (t.pos || []).map(function (p) { return EN_POS[p.toLowerCase()] || p; }).join("・");
   }
 
-  // ---------- pronunciation & etymology (Wiktionary / CMU, optional) ----------
+  // ---------- pronunciation (Wiktionary / CMU, optional) ----------
   var LX = window.LEXICON_DATA || { words: {}, tokens: {} };
   var IPA_SRC = { wiktionary: "Wiktionary", cmudict: "CMU発音辞書", composed: "語ごとの発音をつないだもの" };
 
-  function wikiLink(title, label) {
-    return '<a href="https://en.wiktionary.org/wiki/' + encodeURIComponent(title.replace(/ /g, "_")) + '#English" target="_blank" rel="noopener noreferrer">' + esc(label || title) + "</a>";
-  }
-
-  function firstSentence(text) {
-    var m = String(text).replace(/\s+/g, " ").match(/^.*?[.;](\s|$)/);
-    return (m ? m[0] : text).trim();
-  }
-
-  function etymologyCard(word) {
+  // a phrase: the words it is made of, each with its pronunciation (the explanations come from the notes below)
+  function partsCard(word) {
     var lx = LX.words[word.id];
-    if (!lx) return "";
-    var html = "";
-    if (lx.etyJa || lx.etyEn) {
-      html += '<section class="sentence-card ety-card" aria-label="語源"><div class="card-head"><span class="card-num">語源</span></div>';
-      if (lx.etyJa) html += '<p class="ety-ja">' + esc(lx.etyJa) + "</p>";
-      if (lx.parts) {
-        html += '<p class="ety-parts">' + lx.parts.map(function (x) { return '<span class="part" lang="en">' + esc(x) + "</span>"; }).join('<span class="plus">+</span>') + "</p>";
+    if (!lx || lx.etyJa || lx.etyEn || !lx.tokens || !lx.tokens.length) return "";
+    return '<section class="sentence-card ety-card" aria-label="構成する語"><div class="card-head"><span class="card-num">構成する語</span></div><ul class="token-list">' +
+      lx.tokens.map(function (t) {
+        var info = LX.tokens[t] || {};
+        var duo = WORDS.filter(function (w) { return w.word.toLowerCase() === t; })[0];
+        return '<li><span class="tok" lang="en">' + (duo ? '<button class="tok-link" data-href="#/w/' + duo.id + '">' + esc(t) + "</button>" : esc(t)) + "</span>" +
+          (info.ipa ? '<span class="tok-ipa">' + esc(info.ipa) + "</span>" : "") + "</li>";
+      }).join("") + '</ul><p class="ety-credit">発音は Wiktionary（CC BY-SA 4.0）より</p></section>';
+  }
+
+  // ---------- explanations: ChatGPT writes notes/s001.md … into the private repository duo-notes ----------
+  // One file per sentence. A headword's part starts with a heading that carries its number ("## 0123 rare").
+  // The key to read the repository stays on this device; what was read is kept so it shows offline.
+  var NOTES_URL = "https://api.github.com/repos/N494n0tK/duo-notes/contents/notes/";
+  var notesKey = load("duo.notesKey") || "";
+  var notes = {}, notesChecked = {};
+  var notesDb = null;
+  function openNotesDb() {
+    if (!notesDb) notesDb = new Promise(function (resolve) {
+      try {
+        var req = indexedDB.open("duo-notes", 1);
+        req.onupgradeneeded = function () { req.result.createObjectStore("notes"); };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+    return notesDb;
+  }
+  function notesStore(mode, fn) {
+    return openNotesDb().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (resolve) {
+        try {
+          var req = fn(db.transaction("notes", mode).objectStore("notes"));
+          req.onsuccess = function () { resolve(req.result || null); };
+          req.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+    });
+  }
+  // { text, etag, at } — text "" means there is no note yet
+  function readNote(sid) {
+    if (notes[sid]) return Promise.resolve(notes[sid]);
+    return notesStore("readonly", function (st) { return st.get(sid); }).then(function (rec) {
+      if (rec) notes[sid] = rec;
+      return rec;
+    });
+  }
+  function fetchNote(sid) {
+    var old = notes[sid], headers = { Authorization: "Bearer " + notesKey, Accept: "application/vnd.github.raw+json" };
+    if (old && old.etag) headers["If-None-Match"] = old.etag;
+    return fetch(NOTES_URL + "s" + pad3(sid) + ".md", { headers: headers, cache: "no-store" }).then(function (res) {
+      if (res.status === 304) return old;
+      if (res.status === 401 || res.status === 403) throw new Error("key");
+      if (res.status !== 200 && res.status !== 404) throw new Error("net");
+      return (res.status === 200 ? res.text() : Promise.resolve("")).then(function (text) {
+        var rec = { text: text, etag: res.status === 200 ? res.headers.get("ETag") || "" : "", at: Date.now() };
+        notes[sid] = rec;
+        notesStore("readwrite", function (st) { return st.put(rec, sid); });
+        return rec;
+      });
+    });
+  }
+
+  // the part of a sentence's note about one headword: from its numbered heading to the next heading as big
+  function wordPart(text, id) {
+    var out = [], level = 0, has = new RegExp("(^|\\D)" + id + "(\\D|$)");
+    text.split("\n").forEach(function (line) {
+      var m = line.match(/^(#{1,6})\s+(.*)$/);
+      if (m && level && m[1].length <= level) level = 0;
+      if (m && !level && has.test(m[2])) level = m[1].length;
+      if (level) out.push(line);
+    });
+    return out.join("\n").trim();
+  }
+
+  // a small Markdown reader: headings, paragraphs, lists, tables, quotes, code, bold, italic, links
+  function mdInline(s) {
+    var codes = [];
+    s = esc(s.replace(/`([^`]+)`/g, function (_, c) { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; }));
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    s = s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*\w])\*(?![\s*])(.+?)\*(?!\w)/g, "$1<em>$2</em>");
+    return s.replace(/\u0000(\d+)\u0000/g, function (_, i) { return "<code>" + esc(codes[+i]) + "</code>"; });
+  }
+  var MD_LIST = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/, MD_RULE = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
+  function mdCells(line) {
+    return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map(function (c) { return mdInline(c.trim().replace(/\\\|/g, "|")); });
+  }
+  function md(text) {
+    var lines = String(text).replace(/\r\n?/g, "\n").split("\n"), out = "", para = [], i = 0, m;
+    function flush() { if (para.length) out += "<p>" + para.map(mdInline).join("<br>") + "</p>"; para = []; }
+    while (i < lines.length) {
+      var line = lines[i];
+      if (/^\s*```/.test(line)) {
+        flush();
+        var code = [];
+        for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) code.push(lines[i]);
+        out += "<pre>" + esc(code.join("\n")) + "</pre>";
+        i++;
+      } else if (!line.trim()) {
+        flush(); i++;
+      } else if ((m = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/))) {
+        flush();
+        out += "<h" + Math.min(6, m[1].length + 2) + ">" + mdInline(m[2]) + "</h" + Math.min(6, m[1].length + 2) + ">";
+        i++;
+      } else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+        flush(); out += "<hr>"; i++;
+      } else if (/^\s*>/.test(line)) {
+        flush();
+        var quote = [];
+        for (; i < lines.length && /^\s*>/.test(lines[i]); i++) quote.push(lines[i].replace(/^\s*>\s?/, ""));
+        out += "<blockquote>" + md(quote.join("\n")) + "</blockquote>";
+      } else if (line.indexOf("|") > -1 && MD_RULE.test(lines[i + 1] || "")) {
+        flush();
+        var head = mdCells(line), rows = [];
+        for (i += 2; i < lines.length && lines[i].indexOf("|") > -1 && lines[i].trim(); i++) rows.push(mdCells(lines[i]));
+        out += '<div class="note-scroll"><table><thead><tr><th>' + head.join("</th><th>") + "</th></tr></thead><tbody>" +
+          rows.map(function (r) { return "<tr><td>" + r.join("</td><td>") + "</td></tr>"; }).join("") + "</tbody></table></div>";
+      } else if (MD_LIST.test(line)) {
+        flush();
+        var stack = [], html = "";
+        for (; i < lines.length; i++) {
+          var ln = lines[i], li = ln.match(MD_LIST);
+          if (!ln.trim()) {
+            if (MD_LIST.test(lines[i + 1] || "") || /^\s+\S/.test(lines[i + 1] || "")) continue;
+            break;
+          }
+          if (!li) {
+            if (!/^\s/.test(ln)) break;
+            html += "<br>" + mdInline(ln.trim());
+            continue;
+          }
+          var ind = li[1].replace(/\t/g, "    ").length, tag = /\d/.test(li[2]) ? "ol" : "ul";
+          while (stack.length && ind < stack[stack.length - 1].ind) html += "</li></" + stack.pop().tag + ">";
+          var top = stack[stack.length - 1];
+          if (!top || ind > top.ind) {
+            stack.push({ ind: ind, tag: tag });
+            html += "<" + tag + (tag === "ol" && parseInt(li[2], 10) > 1 ? ' start="' + parseInt(li[2], 10) + '"' : "") + "><li>";
+          } else html += "</li><li>";
+          html += mdInline(li[3]);
+        }
+        while (stack.length) html += "</li></" + stack.pop().tag + ">";
+        out += html;
+      } else {
+        para.push(line.trim()); i++;
       }
-      if (lx.chain && lx.chain.length) {
-        html += '<ol class="ety-chain">' + lx.chain.map(function (c) {
-          return '<li><span class="lang">' + esc(c.lang) + '</span><span class="form" lang="und">' + esc(c.term) + "</span>" +
-            (c.gloss ? '<span class="gloss">“' + esc(c.gloss) + "”</span>" : "") + "</li>";
-        }).join("") + '<li class="now"><span class="lang">英語</span><span class="form" lang="en">' + esc(lx.wiki || word.word) + "</span></li></ol>";
-      }
-      if (lx.etyEn) {
-        html += '<details class="ety-en"><summary>英語の原文（Wiktionary）</summary><p lang="en">' + esc(lx.etyEn) + "</p>" +
-          '<p class="ety-credit">' + wikiLink(lx.wiki || word.word, "Wiktionary で開く") + "　CC BY-SA 4.0</p></details>";
-      }
-      if (!lx.etyJa) html += '<p class="ety-note">日本語の要約はまだありません。</p>';
-      html += "</section>";
-    } else if (lx.tokens && lx.tokens.length) {
-      html += '<section class="sentence-card ety-card" aria-label="構成する語"><div class="card-head"><span class="card-num">構成する語</span></div><ul class="token-list">' +
-        lx.tokens.map(function (t) {
-          var info = LX.tokens[t] || {};
-          var duo = WORDS.filter(function (w) { return w.word.toLowerCase() === t; })[0];
-          var ja = duo && LX.words[duo.id] && LX.words[duo.id].etyJa;
-          var ety = ja ? '<span class="tok-ety">' + esc(ja) + "</span>"
-            : info.ety ? '<span class="tok-ety" lang="en">' + (info.multi ? "（主な語源）" : "") + esc(firstSentence(info.ety)) + " " + wikiLink(t, "→") + "</span>" : "";
-          return '<li><span class="tok" lang="en">' + (duo ? '<button class="tok-link" data-href="#/w/' + duo.id + '">' + esc(t) + "</button>" : esc(t)) + "</span>" +
-            (info.ipa ? '<span class="tok-ipa">' + esc(info.ipa) + "</span>" : "") + ety + "</li>";
-        }).join("") + '</ul><p class="ety-credit">Wiktionary（CC BY-SA 4.0）より</p></section>';
     }
-    return html;
+    flush();
+    return out;
+  }
+
+  function noteCard(sid, word) {
+    return '<section class="sentence-card ety-card note-card" data-note="' + sid + '"' + (word ? ' data-note-word="' + word.id + '"' : "") + ' aria-label="解説">' +
+      '<div class="card-head"><span class="card-num">解説</span><span class="note-state"></span></div><div class="note-body"></div></section>';
+  }
+  function keyForm() {
+    return '<p class="note-msg">ChatGPT が書いた解説を読むには、GitHub の合鍵（duo-notes を読むだけのトークン）が要ります。この端末の中だけに保存します。</p>' +
+      '<form class="note-key"><input type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…" aria-label="合鍵">' +
+      '<button type="submit">保存</button></form>';
+  }
+  // state: "" / "offline" (showing what was saved) / "error" (nothing saved and no connection) / "key" (the key was refused)
+  function paintNote(card, rec, state) {
+    var sid = +card.dataset.note, id = card.dataset.noteWord, html;
+    card.querySelector(".note-state").textContent = state === "offline" ? "圏外：保存した解説" : "";
+    if (!notesKey) html = keyForm();
+    else if (!rec) html = '<p class="note-msg">' + (state === "error" ? "解説を読めませんでした。電波のあるところで開き直してください。" : state === "key" ? "" : "読み込んでいます…") + "</p>";
+    else if (!rec.text.trim()) html = '<p class="note-msg">この例文の解説はまだありません。</p>';
+    else {
+      var part = id ? wordPart(rec.text, id) : rec.text;
+      html = part ? '<div class="note-md">' + md(part) + "</div>" : '<p class="note-msg">この単語の解説はまだありません。</p>';
+      if (id) html += '<button type="button" class="note-all" data-href="#/s/' + sid + '">#' + pad3(sid) + " の解説をすべて読む</button>";
+    }
+    if (state === "key") html = '<p class="note-msg note-warn">合鍵が使えません（期限切れか、duo-notes を読む許可がありません）。下の「合鍵を入れ直す」から入れ直してください。</p>' + html;
+    if (notesKey) html += '<button type="button" class="note-rekey" data-note-rekey>合鍵を入れ直す</button>';
+    card.querySelector(".note-body").innerHTML = html;
+  }
+  function showNote() {
+    var card = $detail.querySelector(".note-card");
+    if (!card) return;
+    var sid = +card.dataset.note;
+    if (!notesKey) { paintNote(card, null); return; }
+    readNote(sid).then(function (rec) {
+      if (!card.isConnected) return;
+      paintNote(card, rec);
+      if (notesChecked[sid]) return;
+      fetchNote(sid).then(function (fresh) {
+        notesChecked[sid] = true;
+        if (card.isConnected && fresh !== rec) paintNote(card, fresh);
+      }, function (err) {
+        if (!card.isConnected) return;
+        paintNote(card, rec, err.message === "key" ? "key" : rec ? "offline" : "error");
+      });
+    });
   }
 
   // ---------- highlighter (assets/marks.js): which DUO word owns each character of a sentence ----------
@@ -537,7 +689,8 @@
       '<p class="sentence-en" lang="en">' + renderSentenceHtml(sid, word && word.id) + "</p>" +
       '<p class="sentence-ja">' + esc(s.ja) + "</p></section>";
 
-    if (word) html += etymologyCard(word);
+    if (word) html += partsCard(word);
+    html += noteCard(sid, word);
 
     var related = word ? termsByWord[word.id] || [] : [];
     if (related.length) {
@@ -580,6 +733,7 @@
     curKey = key;
     lastP = p;
     setupReveal(same);
+    showNote();
   }
 
   // ---------- hide & reveal: a hidden sentence is blurred and cleared one word at a time ----------
@@ -1046,6 +1200,18 @@
     fitSeek(el);
     el.classList.add("has-results");
   }
+  $detail.addEventListener("submit", function (e) {
+    var form = e.target.closest(".note-key");
+    if (!form) return;
+    e.preventDefault();
+    var key = form.querySelector("input").value.trim();
+    if (!key) return;
+    notesKey = key;
+    notesChecked = {};
+    save("duo.notesKey", key);
+    form.querySelector("input").blur();
+    showNote();
+  });
   $detail.addEventListener("input", function (e) {
     if (!e.target.classList.contains("seek-input")) return;
     clearTimeout(seekTimer);
@@ -1218,6 +1384,14 @@
       return;
     }
     if ((t = e.target.closest("[data-spoiler]")) && !t.classList.contains("shown")) { t.classList.add("shown"); return; }
+    // while the sentence is hidden its explanation is blurred too; a tap shows it
+    if ((t = e.target.closest(".note-body")) && !t.classList.contains("shown") && document.body.matches(".hide-en, .hide-ja")) { t.classList.add("shown"); e.preventDefault(); return; }
+    if (e.target.closest("[data-note-rekey]")) {
+      var nb = e.target.closest(".note-body");
+      nb.innerHTML = keyForm();
+      nb.querySelector("input").focus();
+      return;
+    }
     if ((t = e.target.closest(".hl"))) { go("#/w/" + t.dataset.wid); return; }
     if ((t = e.target.closest("[data-href]"))) { go(t.dataset.href); return; }
     if ((t = e.target.closest("[data-go]"))) { go("#/s/" + t.dataset.go); return; }
@@ -1338,7 +1512,7 @@
     swipe = null;
     if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
     // the dock swipes like the rest of the page; only while a hidden sentence is being rubbed clear does it keep the finger
-    if (e.target.closest(".rail, pre, .ety-chain, input, .seek, .gauge, .tint, .dock.reveal")) return;
+    if (e.target.closest(".rail, pre, input, .note-scroll, .seek, .gauge, .tint, .dock.reveal")) return;
     if ($detail.querySelector(".gauge.open, .tint.open")) return;
     var t = e.touches[0];
     swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };

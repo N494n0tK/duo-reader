@@ -83,7 +83,7 @@
     var old = document.querySelector(".importer");
     if (old) old.remove();
     var s = document.createElement("script");
-    s.src = "assets/app.js?v=02a86dd85c";
+    s.src = "assets/app.js?v=235081b8ca";
     document.body.appendChild(s);
     setupDataButton(pack);
   }
@@ -147,7 +147,7 @@
         "<dl>" +
           "<dt>単語</dt><dd>" + num(duo.words.length) + "</dd>" +
           "<dt>例文</dt><dd>" + num(duo.sentences.length) + "</dd>" +
-          "<dt>発音・語源</dt><dd>" + (lx ? "あり" : "なし") + "</dd>" +
+          "<dt>発音</dt><dd>" + (lx ? "あり" : "なし") + "</dd>" +
           "<dt>データ作成日</dt><dd>" + esc(day(pack.builtAt || meta.builtAt)) + "</dd>" +
           "<dt>読み込んだ日</dt><dd>" + esc(day(pack.importedAt)) + "</dd>" +
           '<dt>保存</dt><dd class="persist">確認中…</dd>' +

@@ -558,32 +558,55 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .ipa-src { font: 11px var(--mono); color: var(--faint); }
 .ety-card { margin-top: 18px; }
 .ety-card .card-num { font-size: 24px; }
-.ety-ja { margin: 4px 0 0; font-size: 16.5px; line-height: 1.85; }
-.ety-parts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
-.part { font: 17px var(--serif); padding: 3px 12px; border-radius: 999px; background: var(--marker-soft); }
-.plus { color: var(--faint); }
-.ety-chain { list-style: none; margin: 20px 0 0; padding: 0; display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; }
-.ety-chain li {
-  display: flex; flex-direction: column; gap: 1px; padding: 8px 12px; border-radius: 14px;
-  background: var(--glass-flat); box-shadow: var(--glass-inset); min-width: 0;
-}
-.ety-chain li + li { position: relative; margin-left: 14px; }
-.ety-chain li + li::before { content: "→"; position: absolute; left: -15px; top: 50%; transform: translateY(-50%); color: var(--faint); font-size: 12px; }
-.ety-chain .lang { font-size: 11px; color: var(--faint); }
-.ety-chain .form { font: 16px var(--serif); overflow-wrap: anywhere; }
-.ety-chain .gloss { font-size: 12px; color: var(--muted); }
-.ety-chain .now { background: var(--marker-soft); }
-.ety-en { margin-top: 18px; }
-.ety-en summary { cursor: pointer; font: 12px var(--mono); color: var(--muted); }
-.ety-en p { font-size: 13.5px; line-height: 1.7; color: var(--muted); margin: 10px 0 0; white-space: pre-line; }
-.ety-credit, .ety-note { font-size: 12px; color: var(--faint); margin: 12px 0 0; }
+.ety-credit { font-size: 12px; color: var(--faint); margin: 12px 0 0; }
 .ety-card a { color: inherit; text-decoration: underline; text-decoration-color: var(--marker-strong); text-underline-offset: 3px; }
 .token-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 12px; }
 .token-list li { display: grid; grid-template-columns: minmax(80px, auto) 1fr; gap: 2px 14px; align-items: baseline; }
 .tok { font: 18px var(--serif); }
 .tok-link { font: inherit; text-decoration: underline; text-decoration-color: var(--marker-strong); text-underline-offset: 3px; }
 .tok-ipa { font-size: 13px; color: var(--muted); }
-.tok-ety { grid-column: 1 / -1; font-size: 13px; line-height: 1.6; color: var(--faint); }
+
+/* ===== Explanations written by ChatGPT (duo-notes) ===== */
+.note-card .card-head { align-items: baseline; }
+.note-state { margin-left: auto; font: 11px var(--mono); color: var(--faint); }
+.note-msg { margin: 6px 0 0; font-size: 14px; line-height: 1.7; color: var(--muted); }
+.note-warn { color: var(--text); margin-bottom: 10px; }
+.note-body { transition: filter .3s var(--ease); }
+.hide-ja .note-body:not(.shown), .hide-en .note-body:not(.shown) { filter: blur(7px); cursor: pointer; user-select: none; }
+.note-md { font-size: 15.5px; line-height: 1.85; overflow-wrap: anywhere; }
+.note-md > :first-child { margin-top: 4px; }
+.note-md p, .note-md ul, .note-md ol, .note-md blockquote, .note-md pre, .note-md .note-scroll { margin: 12px 0 0; }
+.note-md h3, .note-md h4, .note-md h5, .note-md h6 { margin: 26px 0 0; line-height: 1.45; font-weight: 600; }
+.note-md h3 { font-size: 19px; }
+.note-md h4 { font-size: 17px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.note-md h5 { font-size: 15.5px; color: var(--marker); }
+.note-md h6 { font-size: 14px; color: var(--muted); }
+.note-md ul, .note-md ol { padding-left: 1.4em; }
+.note-md li + li { margin-top: 4px; }
+.note-md li > ul, .note-md li > ol { margin-top: 4px; }
+.note-md strong { font-weight: 600; background: linear-gradient(transparent 62%, var(--marker-soft) 62%); }
+.note-md code { font: .9em var(--mono); padding: 1px 6px; border-radius: 6px; background: var(--glass-flat); }
+.note-md pre { font: 13px/1.6 var(--mono); padding: 12px 14px; border-radius: 14px; background: var(--glass-flat); overflow-x: auto; white-space: pre; }
+.note-md blockquote { padding: 2px 0 2px 14px; border-left: 3px solid var(--marker-strong); color: var(--muted); }
+.note-md blockquote > :first-child { margin-top: 0; }
+.note-md hr { border: 0; height: 1px; background: var(--line); margin: 22px 0; }
+.note-md a { color: inherit; text-decoration: underline; text-decoration-color: var(--marker-strong); text-underline-offset: 3px; }
+.note-scroll { overflow-x: auto; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); }
+.note-md table { border-collapse: collapse; min-width: 100%; font-size: 14px; line-height: 1.6; }
+.note-md th, .note-md td { padding: 8px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.note-md th { font-weight: 600; white-space: nowrap; background: var(--glass-flat); }
+.note-md tr:last-child td { border-bottom: 0; }
+.note-key { display: flex; gap: 8px; margin: 12px 0 0; }
+.note-key input {
+  flex: 1; min-width: 0; padding: 10px 14px; border-radius: 999px; border: 0; color: var(--text);
+  font: 15px var(--mono); background: var(--glass-flat); box-shadow: var(--glass-inset), inset 0 0 0 1px var(--line);
+}
+.note-key button, .note-all, .note-rekey {
+  padding: 9px 16px; border-radius: 999px; font-size: 13.5px; color: var(--text);
+  background: var(--glass-flat); box-shadow: var(--glass-inset), inset 0 0 0 1px var(--line);
+}
+.note-all { display: block; margin: 18px 0 0; }
+.note-rekey { display: block; margin: 16px 0 0; padding: 0; font-size: 11.5px; color: var(--faint); background: none; box-shadow: none; }
 
 /* ===== Game & tech terms ===== */
 .dom { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 7px 0 0 2px; }
