@@ -530,6 +530,39 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   font: 10px/1 var(--mono); color: var(--marker); letter-spacing: .02em; user-select: none;
   opacity: 0; animation: pop .45s var(--spring) forwards; animation-delay: calc(var(--d, 0ms) + 260ms);
 }
+/* the sentence's skeleton drawn on it: S / V / O / C / M each underlined in its own color, the chunk's letter under its first word */
+.syn-btn {
+  margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 12px 5px 9px; border-radius: 999px; font: 600 12px var(--sans); color: var(--faint);
+  background: var(--glass-flat); box-shadow: var(--glass-inset);
+  transition: color .25s, background-color .25s, transform .35s var(--spring);
+}
+.syn-btn:active { transform: scale(.92); }
+.syn-btn[aria-pressed="true"] { color: var(--text); background: color-mix(in srgb, var(--marker) 16%, transparent); }
+.syn-dots { display: inline-flex; gap: 3px; }
+.syn-dots b { width: 6px; height: 6px; border-radius: 50%; background: var(--role); opacity: .35; transition: opacity .25s; }
+.syn-btn[aria-pressed="true"] .syn-dots b { opacity: 1; }
+[data-r="S"] { --role: var(--tech); }
+[data-r="V"] { --role: var(--marker); }
+[data-r="O"] { --role: var(--fix); }
+[data-r="C"] { --role: var(--game); }
+[data-r="M"] { --role: var(--muted); }
+[data-r="X"] { --role: var(--faint); }
+.sentence-en .wd[data-r] {
+  text-decoration: underline 2.5px transparent; text-underline-offset: .3em; text-decoration-skip-ink: none;
+  transition: color .45s var(--ease), text-shadow .55s var(--ease), text-decoration-color .35s var(--ease);
+}
+.syn .sentence-en .wd[data-r] { text-decoration-color: color-mix(in srgb, var(--role) 90%, transparent); }
+.syn:not(.rv) .sentence-en .wd[data-r] { color: color-mix(in srgb, var(--role) 42%, var(--text)); }
+.sentence-en .wd[data-tag] { position: relative; }
+.sentence-en .wd[data-tag]::after {
+  content: attr(data-tag); position: absolute; left: 0; top: calc(100% + .52em);
+  font: 700 9.5px/1 var(--mono); letter-spacing: .03em; color: var(--role); white-space: nowrap;
+  pointer-events: none; opacity: 0; transform: translateY(-3px); transition: opacity .3s var(--ease), transform .35s var(--spring);
+}
+.syn .sentence-en .wd[data-tag]::after { opacity: .95; transform: none; }
+.syn .sentence-en { line-height: 2.6; }
+.sentence-en { transition: line-height .35s var(--ease); }
 .static .hl { animation: none; --draw: 1; }
 .static .hl rt { animation: none; opacity: .95; }
 
@@ -613,6 +646,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .nt-chunk[data-role="O"] { --role: var(--fix); }
 .nt-chunk[data-role="C"] { --role: var(--game); }
 .nt-chunk[data-role="M"] { --role: var(--muted); }
+.nt-chunk[data-role="X"] { --role: var(--faint); }
 .nt-chunk > b { font: 600 11px var(--mono); color: var(--role); }
 .nt-chunk > span { font: 16.5px/1.4 var(--serif); }
 .nt-chunk > small { grid-column: 1 / -1; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
@@ -630,16 +664,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .nt-ex { margin: 8px 0 0; display: grid; gap: 1px; padding-left: 12px; border-left: 2px solid var(--marker-strong); }
 .nt-ex-en { font: 16px/1.5 var(--serif); }
 .nt-ex-ja { font-size: 13px; line-height: 1.6; color: var(--muted); }
-.nt-words { display: flex; flex-wrap: wrap; gap: 6px; border-top: 1px solid var(--line); padding-top: 16px; }
-.nt-wtab {
-  display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 13px; border-radius: 999px;
-  background: var(--glass-flat); box-shadow: var(--glass-inset); color: var(--muted);
-  transition: transform .35s var(--spring), background-color .2s, color .2s;
-}
-.nt-wtab small { font: 10.5px var(--mono); color: var(--faint); }
-.nt-wtab span { font: 16px var(--serif); }
-.nt-wtab:active { transform: scale(.93); }
-.nt-wtab[aria-selected="true"] { color: var(--text); background: var(--marker-soft); box-shadow: var(--glass-inset), 0 0 0 1px var(--marker-soft); }
+.nt-hint { margin: 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.6; color: var(--faint); }
 .nt-src { font-size: 12px; color: var(--faint); }
 .nt-src summary { cursor: pointer; }
 .nt-src ul { margin: 6px 0 0; padding-left: 1.2em; display: grid; gap: 3px; }

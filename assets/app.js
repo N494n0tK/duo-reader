@@ -233,9 +233,15 @@
   var SURE = { "確実": "sure", "有力": "likely", "諸説あり": "split", "不明": "unknown" };
   var KIN = { "派生語": "derived", "同根語": "cognate", "別語源": "false" };
   // which part of a word card is open; kept while moving between words, so the learner stays on "語源" if they like it
-  var ntTab = "ety", ntWord = {};
+  var ntTab = "ety";
   // the look at the whole sentence can be folded away with the v button; it stays folded on the next sentence too
   var ntSentOpen = load("duo.ntSent") !== "0";
+  // the sentence's skeleton (S / V / O / C / M) drawn right on the example sentence; the 文型 button turns it on and off
+  var synOn = load("duo.syn") !== "0";
+  function roleKey(role) {
+    var r = String(role || "").trim();
+    return /^[SVOCM]/i.test(r) ? r.charAt(0).toUpperCase() : "X";
+  }
 
   function exampleHtml(x) {
     if (!x || !x.en) return "";
@@ -314,15 +320,15 @@
     "</article>";
   }
 
-  // the sentence: what it says, its skeleton, the few points worth a word, then its headwords one at a time
-  function sentenceNoteHtml(n, sid) {
-    var words = list(n.words), pick = 0;
-    words.forEach(function (w, i) { if (w.id === ntWord[sid]) pick = i; });
+  // the sentence: what it says, its skeleton, the few points worth a word; then the card of the word in focus.
+  // A headword's card shows only on its own page (tap the word in the sentence), never as a row of tabs.
+  function sentenceNoteHtml(n, sid, wordId) {
+    var words = list(n.words);
     var html = n.gist ? '<p class="nt-gist">' + mdInline(n.gist) + "</p>" : "";
     var parts = list(n.structure);
     if (parts.length) {
       html += '<div class="nt-struct">' + parts.map(function (x, i) {
-        return '<span class="nt-chunk" data-role="' + esc(x.role) + '" style="--i:' + i + '"><b title="' + esc(ROLE_NAMES[x.role] || x.role) + '">' + esc(x.role) + '</b><span lang="en">' + esc(x.text) + "</span>" +
+        return '<span class="nt-chunk" data-role="' + roleKey(x.role) + '" style="--i:' + i + '"><b title="' + esc(ROLE_NAMES[x.role] || x.role) + '">' + esc(x.role) + '</b><span lang="en">' + esc(x.text) + "</span>" +
           (x.note ? "<small>" + esc(x.note) + "</small>" : "") + "</span>";
       }).join("") + "</div>";
     }
@@ -338,11 +344,11 @@
         '<button type="button" class="nt-fold" data-nt-fold aria-expanded="' + ntSentOpen + '"><span>文の解説</span><i class="nt-chev" aria-hidden="true"></i></button>' +
         '<div class="nt-sent-panel"><div class="nt-sent-in">' + html + "</div></div></div>";
     }
-    if (words.length) {
-      html += '<div class="nt-words" role="tablist" aria-label="見出し語">' + words.map(function (w, i) {
-        return '<button type="button" class="nt-wtab" role="tab" data-nt-word="' + i + '" aria-selected="' + (i === pick) + '"><small>' + esc(w.id) + '</small><span lang="en">' + esc(w.word) + "</span></button>";
-      }).join("") + "</div>";
-      html += '<div class="nt-wordpane">' + wordCardHtml(words[pick]) + "</div>";
+    if (wordId) {
+      var w = words.filter(function (x) { return x.id === wordId; })[0];
+      html += '<div class="nt-wordpane">' + (w ? wordCardHtml(w) : '<p class="note-msg">この単語の解説はまだありません。</p>') + "</div>";
+    } else if (words.length) {
+      html += '<p class="nt-hint">本文の単語をタップすると、その単語の解説が出ます</p>';
     }
     return '<div class="nt">' + html + "</div>";
   }
@@ -366,17 +372,71 @@
     else {
       var n = parseNote(rec.text);
       if (!n) html = '<p class="note-msg note-warn">解説ファイルの形が崩れていて表示できません。ChatGPT に「s' + pad3(sid) + '.json を duo-note.schema.json に合わせて直して」と頼んでください。</p>';
-      else if (!id) html = sentenceNoteHtml(n, sid);
-      else {
-        var w = list(n.words).filter(function (x) { return x.id === id; })[0];
-        html = (w ? wordCardHtml(w) : '<p class="note-msg">この単語の解説はまだありません。</p>') +
-          '<button type="button" class="note-all" data-href="#/s/' + sid + '">#' + pad3(sid) + " の文の解説へ</button>";
-      }
+      else html = sentenceNoteHtml(n, sid, id);
     }
+    paintSyntax(sid, n && list(n.structure));
     if (state === "key") html = '<p class="note-msg note-warn">合鍵が使えません（期限切れか、duo-notes を読む許可がありません）。下の「合鍵を入れ直す」から入れ直してください。</p>' + html;
     if (notesKey) html += '<button type="button" class="note-rekey" data-note-rekey>合鍵を入れ直す</button>';
     card.querySelector(".note-body").innerHTML = html;
   }
+  // where each chunk of the skeleton sits in the sentence: [start, end, role], in the order written, whole words only
+  function syntaxRanges(en, parts) {
+    var low = en.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"'), cur = 0, out = [];
+    function letter(c) { return !!c && /[a-z0-9]/i.test(c); }
+    function find(q, from) {
+      for (var i = low.indexOf(q, from); i > -1; i = low.indexOf(q, i + 1)) {
+        if (!(letter(q.charAt(0)) && letter(low.charAt(i - 1))) && !(letter(q.charAt(q.length - 1)) && letter(low.charAt(i + q.length)))) return i;
+      }
+      return -1;
+    }
+    parts.forEach(function (x) {
+      // "not only … but also": a chunk written in pieces
+      String(x.text || "").split(/\s*(?:\.{3}|\u2026|\u301c|~)\s*/).forEach(function (seg) {
+        var q = seg.trim().toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"'), at = -1;
+        if (!q) return;
+        [q, q.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "")].some(function (t) {
+          if (!t) return false;
+          at = find(t, cur);
+          if (at < 0) at = find(t, 0);
+          if (at > -1) q = t;
+          return at > -1;
+        });
+        if (at < 0) return;
+        out.push([at, at + q.length, x.role]);
+        cur = at + q.length;
+      });
+    });
+    return out;
+  }
+  // color the words of the sentence by their part (S / V / O / C / M); the first word of each chunk carries its letter
+  function paintSyntax(sid, parts) {
+    var card = $detail.querySelector('.sentence-card[data-sid="' + sid + '"]');
+    if (!card) return;
+    var en = card.querySelector(".sentence-en"), btn = card.querySelector("[data-syn]");
+    Array.prototype.forEach.call(en.querySelectorAll(".wd[data-r]"), function (w) { delete w.dataset.r; delete w.dataset.tag; });
+    var ranges = parts && parts.length ? syntaxRanges(SENTENCES[sid - 1].en, parts) : [];
+    btn.hidden = !ranges.length;
+    card.classList.toggle("syn", synOn && ranges.length > 0);
+    if (!ranges.length) return;
+    var walker = document.createTreeWalker(en, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (n) { return n.parentNode.closest("rt") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
+    });
+    var at = 0, n, tagged = {};
+    while ((n = walker.nextNode())) {
+      var wd = n.parentNode.closest(".wd");
+      if (wd && /\S/.test(n.nodeValue)) {
+        for (var k = 0; k < ranges.length; k++) {
+          if (at >= ranges[k][0] && at < ranges[k][1]) {
+            wd.dataset.r = roleKey(ranges[k][2]);
+            if (!tagged[k]) { tagged[k] = true; wd.dataset.tag = String(ranges[k][2]).trim(); }
+            break;
+          }
+        }
+      }
+      at += n.nodeValue.length;
+    }
+  }
+
   function showNote() {
     var card = $detail.querySelector(".note-card");
     if (!card) return;
@@ -735,7 +795,8 @@
     }
 
     html += '<section class="sentence-card' + (same ? " static" : "") + '"' + colorAttrs(key) + ' data-sid="' + sid + '" aria-label="例文 ' + sid + '">' +
-      '<div class="card-head"><span class="card-num">#' + pad3(sid) + '</span><span class="card-of">/ ' + SENTENCES.length + "</span></div>" +
+      '<div class="card-head"><span class="card-num">#' + pad3(sid) + '</span><span class="card-of">/ ' + SENTENCES.length + "</span>" +
+        '<button type="button" class="syn-btn" data-syn hidden aria-pressed="' + synOn + '" title="文型の色分け"><i class="syn-dots" aria-hidden="true"><b data-r="S"></b><b data-r="V"></b><b data-r="O"></b></i>文型</button></div>' +
       '<p class="sentence-en" lang="en">' + renderSentenceHtml(sid, word && word.id) + "</p>" +
       '<p class="sentence-ja">' + esc(s.ja) + "</p></section>";
 
@@ -1408,6 +1469,13 @@
       setTimeout(closePops, 260); // let the choice show before the drop closes
       return;
     }
+    if ((t = e.target.closest("[data-syn]"))) {
+      synOn = !synOn;
+      save("duo.syn", synOn ? "1" : "0");
+      t.setAttribute("aria-pressed", synOn);
+      t.closest(".sentence-card").classList.toggle("syn", synOn);
+      return;
+    }
     if ((t = e.target.closest(".dock .nav-btn")) && t.closest(".reveal")) {
       if (Date.now() > rvGuard) revealStep(t.classList.contains("dock-r") ? 1 : -1);
       return;
@@ -1441,14 +1509,6 @@
       save("duo.ntSent", ntSentOpen ? "1" : "0");
       t.parentNode.classList.toggle("closed", !ntSentOpen);
       t.setAttribute("aria-expanded", ntSentOpen);
-      return;
-    }
-    if ((t = e.target.closest("[data-nt-word]"))) {
-      var nc = t.closest(".note-card"), nsid = +nc.dataset.note, nn = notes[nsid] && parseNote(notes[nsid].text), nw = nn && list(nn.words)[+t.dataset.ntWord];
-      if (!nw) return;
-      ntWord[nsid] = nw.id;
-      Array.prototype.forEach.call(nc.querySelectorAll("[data-nt-word]"), function (b) { b.setAttribute("aria-selected", b === t); });
-      nc.querySelector(".nt-wordpane").innerHTML = wordCardHtml(nw);
       return;
     }
     if ((t = e.target.closest("[data-nt-tab]"))) {
