@@ -817,14 +817,14 @@
         '<span class="p">' + esc(posLabel(w.pos)) + "</span></button>";
     }).join("") + "</div>";
 
-    // bottom dock: « number » moves 5 at a time; while the sentence is hidden it turns into ‹ › that clear it word by word
+    // bottom dock: « number » moves one sentence at a time; while the sentence is hidden it turns into ‹ › that clear it word by word
     if (!opts.home) {
       html += '<nav class="dock" aria-label="例文の移動">' +
-        '<button class="nav-btn dock-l" data-go="' + Math.max(1, sid - 5) + '"' + (sid <= 1 ? ' data-end="1"' : "") + '>' +
-          '<span class="dk-nav"><span class="sr">5つ前の例文</span>' + ICON.prev5 + '</span><span class="dk-rv" aria-hidden="true">' + ICON.prev + "</span></button>" +
+        '<button class="nav-btn dock-l" data-go="' + Math.max(1, sid - 1) + '"' + (sid <= 1 ? ' data-end="1"' : "") + '>' +
+          '<span class="dk-nav"><span class="sr">前の例文</span>' + ICON.prev5 + '</span><span class="dk-rv" aria-hidden="true">' + ICON.prev + "</span></button>" +
         '<span class="dock-num" title="ダブルタップで番号を入力">#' + pad3(sid) + '<small class="dk-of">/ ' + SENTENCES.length + '</small><small class="dk-prog"></small><i class="dk-bar" aria-hidden="true"></i></span>' +
-        '<button class="nav-btn dock-r" data-go="' + Math.min(SENTENCES.length, sid + 5) + '"' + (sid >= SENTENCES.length ? ' data-end="1"' : "") + '>' +
-          '<span class="dk-nav"><span class="sr">5つ先の例文</span>' + ICON.next5 + '</span><span class="dk-rv" aria-hidden="true">' + ICON.next + "</span></button></nav>";
+        '<button class="nav-btn dock-r" data-go="' + Math.min(SENTENCES.length, sid + 1) + '"' + (sid >= SENTENCES.length ? ' data-end="1"' : "") + '>' +
+          '<span class="dk-nav"><span class="sr">次の例文</span>' + ICON.next5 + '</span><span class="dk-rv" aria-hidden="true">' + ICON.next + "</span></button></nav>";
     }
 
     if (opts.home) {
@@ -914,7 +914,7 @@
     dock.style.setProperty("--rp", total ? clear / total : 1);
     clearTimeout(rvTimer);
     if (rv.hidden) setDockMode(dock, true);
-    // everything is clear: give the dock back to « » after a moment, so a quick extra tap does not jump 5 sentences
+    // everything is clear: give the dock back to « » after a moment, so a quick extra tap does not jump to the next sentence
     else if (dock.classList.contains("reveal")) {
       if (instant) setDockMode(dock, false);
       else rvTimer = setTimeout(function () { setDockMode(dock, false); }, 650);
