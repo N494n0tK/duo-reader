@@ -384,17 +384,22 @@
     var low = en.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"'), cur = 0, out = [];
     function letter(c) { return !!c && /[a-z0-9]/i.test(c); }
     function find(q, from) {
+      // "n't" starts inside its word ("don't") and "do" ends there; every other chunk starts and ends on a word edge
+      var glued = /^n'/.test(q);
       for (var i = low.indexOf(q, from); i > -1; i = low.indexOf(q, i + 1)) {
-        if (!(letter(q.charAt(0)) && letter(low.charAt(i - 1))) && !(letter(q.charAt(q.length - 1)) && letter(low.charAt(i + q.length)))) return i;
+        var end = i + q.length, tail = low.charAt(end) === "n" && low.charAt(end + 1) === "'"; // "do" of "don't"
+        if (!(!glued && letter(q.charAt(0)) && letter(low.charAt(i - 1))) && !(letter(q.charAt(q.length - 1)) && letter(low.charAt(end)) && !tail)) return i;
       }
       return -1;
     }
+    // the note may spell out a contracted word: "is" for the 's of "it's", "not" for "n't"
+    var SHORT = { is: ["'s"], has: ["'s"], are: ["'re"], am: ["'m"], have: ["'ve"], will: ["'ll"], would: ["'d"], had: ["'d"], not: ["n't"], us: ["'s"] };
     parts.forEach(function (x) {
       // "not only … but also": a chunk written in pieces
       String(x.text || "").split(/\s*(?:\.{3}|\u2026|\u301c|~)\s*/).forEach(function (seg) {
         var q = seg.trim().toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"'), at = -1;
         if (!q) return;
-        [q, q.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "")].some(function (t) {
+        [q, q.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "")].concat(SHORT[q] || []).some(function (t) {
           if (!t) return false;
           at = find(t, cur);
           if (at < 0) at = find(t, 0);
@@ -410,7 +415,7 @@
   }
   // color the words of the sentence by their part (S / V / O / C / M); the first word of each chunk carries its letter.
   // The lines are not there at once: a pen draws them left to right, chunk after chunk, after the highlighter has gone by.
-  var SYN_PEN = 22, SYN_GAP = 100; // ms per letter, pause between chunks
+  var SYN_PEN = 7, SYN_GAP = 35; // ms per letter, pause between chunks
   function sameLine(a, b) { return Math.abs(a.getBoundingClientRect().bottom - b.getBoundingClientRect().bottom) < 4; }
   function paintSyntax(sid, parts) {
     var card = $detail.querySelector('.sentence-card[data-sid="' + sid + '"]');
@@ -425,9 +430,10 @@
     card.classList.remove("syn");
     Array.prototype.forEach.call(en.querySelectorAll(".wd[data-r]"), function (w) {
       delete w.dataset.r; delete w.dataset.tag; delete w.dataset.join;
-      w.style.removeProperty("--sd"); w.style.removeProperty("--sl");
+      w.style.removeProperty("--sd"); w.style.removeProperty("--sl"); w.style.removeProperty("--tx");
     });
     if (!ranges.length) return;
+    splitShared(card, en, ranges);
     var walker = document.createTreeWalker(en, NodeFilter.SHOW_TEXT, {
       acceptNode: function (n) { return n.parentNode.closest("rt") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
     });
@@ -457,16 +463,52 @@
       if (join) w.el.dataset.join = "";
       var len = same ? next.at - w.at : w.len;
       s.setProperty("--sd", Math.round(t) + "ms");
-      s.setProperty("--sl", Math.round(Math.max(90, len * SYN_PEN)) + "ms");
+      s.setProperty("--sl", Math.round(Math.max(30, len * SYN_PEN)) + "ms");
       t += len * SYN_PEN;
     });
     card.dataset.synT = Math.round(t);
+    var lastEnd = -1, lastTop = null;
+    words.forEach(function (w) {
+      if (!w.el.dataset.tag) return;
+      var r = w.el.getBoundingClientRect(), shift = 0;
+      if (lastTop !== null && Math.abs(r.bottom - lastTop) < 4 && r.left < lastEnd + 3) shift = lastEnd + 3 - r.left;
+      if (shift) w.el.style.setProperty("--tx", Math.round(shift) + "px");
+      lastEnd = r.left + shift + 9 + 6 * w.el.dataset.tag.length;
+      lastTop = r.bottom;
+    });
     if (!synOn) return;
     // a sentence just opened: let the highlighter finish its words first. Moving between its words: lines already there.
     if (card.classList.contains("static")) {
       card.classList.add("syn-now", "syn");
       requestAnimationFrame(function () { requestAnimationFrame(function () { card.classList.remove("syn-now"); }); });
     } else drawSyntax(card, Math.max(0, 260 + en.querySelectorAll(".hl").length * 110 - (performance.now() - renderAt)));
+  }
+  // one written word, two parts of the sentence ("it's" = S It + V 's): cut the word where one chunk ends and the next begins,
+  // so each piece takes its own color. Both pieces keep the word's number, so hiding and clearing still treat it as one word.
+  function splitShared(card, en, ranges) {
+    function roleAt(i) {
+      for (var k = 0; k < ranges.length; k++) if (i >= ranges[k][0] && i < ranges[k][1]) return k;
+      return -1;
+    }
+    var walker = document.createTreeWalker(en, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (n) { return n.parentNode.closest("rt") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
+    });
+    var nodes = [], n, at = 0, cut = false;
+    while ((n = walker.nextNode())) { nodes.push([n, at]); at += n.nodeValue.length; }
+    nodes.forEach(function (x) {
+      var node = x[0], start = x[1], wd = node.parentNode;
+      if (!wd.classList || !wd.classList.contains("wd")) return;
+      for (var i = node.nodeValue.length - 1; i > 0; i--) {
+        var a = roleAt(start + i - 1), b = roleAt(start + i);
+        if (a < 0 || b < 0 || a === b) continue;
+        var piece = wd.cloneNode(false);
+        piece.textContent = node.nodeValue.slice(i);
+        node.nodeValue = node.nodeValue.slice(0, i);
+        wd.parentNode.insertBefore(piece, wd.nextSibling);
+        cut = true;
+      }
+    });
+    if (cut && rv.card === card) rv.words = Array.prototype.slice.call(card.querySelectorAll(".wd"));
   }
   // put the pen down: the delays hold only while it draws, so a theme change afterwards recolors every word at once
   function drawSyntax(card, start) {
