@@ -456,6 +456,184 @@
     });
   }
 
+  // ---------- the CD's voice: the private repository duo-audio, read with the same key as the explanations ----------
+  // index.json lists each track's stretches of speech (with what speech recognition heard in them). Which stretch is
+  // which sentence is worked out here, against the sentences on this device; a track is fetched the first time one
+  // of its sentences is played and kept, so it plays offline after that.
+  var AUDIO_URL = "https://api.github.com/repos/N494n0tK/duo-audio/contents/";
+  var audioDb = null;
+  function audioStore(mode, fn) {
+    if (!audioDb) audioDb = new Promise(function (resolve) {
+      try {
+        var req = indexedDB.open("duo-audio", 1);
+        req.onupgradeneeded = function () { req.result.createObjectStore("files"); };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { resolve(null); };
+      } catch (e) { resolve(null); }
+    });
+    return audioDb.then(function (db) {
+      if (!db) return null;
+      return new Promise(function (resolve) {
+        try {
+          var req = fn(db.transaction("files", mode).objectStore("files"));
+          req.onsuccess = function () { resolve(req.result || null); };
+          req.onerror = function () { resolve(null); };
+        } catch (e) { resolve(null); }
+      });
+    });
+  }
+  function audioFetch(name, etag, type) {
+    var headers = { Authorization: "Bearer " + notesKey, Accept: "application/vnd.github.raw+json" };
+    if (etag) headers["If-None-Match"] = etag;
+    return fetch(AUDIO_URL + encodeURIComponent(name), { headers: headers, cache: "no-store" }).then(function (res) {
+      if (res.status === 304) return null;
+      if (res.status === 401 || res.status === 403 || res.status === 404) throw new Error("key");
+      if (!res.ok) throw new Error("net");
+      return res[type]().then(function (body) { return { body: body, etag: res.headers.get("ETag") || "" }; });
+    }, function () { throw new Error("net"); });
+  }
+
+  function alignAudio(idx, texts) {
+    var ids = {}, nid = 0;
+    function words(s) {
+      return (String(s || "").toLowerCase().replace(/[‘’]/g, "'").match(/[a-z0-9']+/g) || []).map(function (w) { return ids[w] || (ids[w] = ++nid); });
+    }
+    var C = [];
+    idx.tracks.forEach(function (t, ti) { t.chunks.forEach(function (c) { C.push({ t: ti, s: c[0], e: c[1], w: words(c[2]) }); }); });
+    var S = texts.map(words);
+    var N = S.length, M = C.length, W = M + 1, SKIP = -0.6, NONE = -1, BAND = 50;
+    var want = new Int32Array(nid + 1), got = new Int32Array(nid + 1);
+    function sim(i, j, k) {
+      var a = S[i], hit = 0, n = 0, q, w;
+      for (q = 0; q < a.length; q++) want[a[q]]++;
+      for (q = j; q < k; q++) for (w = 0; w < C[q].w.length; w++) { var x = C[q].w[w]; n++; if (++got[x] <= want[x]) hit++; }
+      for (q = 0; q < a.length; q++) want[a[q]] = 0;
+      for (q = j; q < k; q++) for (w = 0; w < C[q].w.length; w++) got[C[q].w[w]] = 0;
+      return a.length + n ? 2 * hit / (a.length + n) : 0;
+    }
+    var dp = new Float64Array((N + 1) * W).fill(-1e9), bk = new Int8Array((N + 1) * W);
+    dp[0] = 0;
+    for (var i = 0; i <= N; i++) {
+      var mid = Math.round(i * M / N), lo = Math.max(0, mid - BAND), hi = Math.min(M, mid + BAND);
+      for (var j = lo; j <= hi; j++) {
+        var v = dp[i * W + j];
+        if (v < -1e8) continue;
+        if (j < M && v + SKIP > dp[i * W + j + 1]) { dp[i * W + j + 1] = v + SKIP; bk[i * W + j + 1] = -1; }
+        if (i === N) continue;
+        if (v + NONE > dp[(i + 1) * W + j]) { dp[(i + 1) * W + j] = v + NONE; bk[(i + 1) * W + j] = 0; }
+        for (var k = j + 1; k <= Math.min(M, j + 4) && C[k - 1].t === C[j].t; k++) {
+          var x = v + sim(i, j, k);
+          if (x > dp[(i + 1) * W + k]) { dp[(i + 1) * W + k] = x; bk[(i + 1) * W + k] = k - j; }
+        }
+      }
+    }
+    var out = new Array(N), total = dp[N * W + M];
+    for (var a = N, b = M; a > 0 || b > 0;) {
+      var s = bk[a * W + b];
+      if (s === -1) { b--; continue; }
+      a--;
+      if (s > 0) { out[a] = [C[b - s].t, C[b - s].s, C[b - 1].e]; b -= s; } else out[a] = null;
+    }
+    return { map: out, score: total / N };
+  }
+
+  // sentence number → [track, start, end]; worked out once per index.json and kept
+  var audioMapP = null;
+  function audioMap() {
+    if (audioMapP) return audioMapP;
+    audioMapP = audioStore("readonly", function (st) { return st.get("index.json"); }).then(function (rec) {
+      return audioFetch("index.json", rec && rec.etag, "text").then(function (fresh) {
+        if (fresh) { rec = { body: fresh.body, etag: fresh.etag }; audioStore("readwrite", function (st) { return st.put(rec, "index.json"); }); }
+        return rec;
+      }, function (err) { if (rec) return rec; throw err; });
+    }).then(function (rec) {
+      var idx = JSON.parse(rec.body), key = rec.etag + "/" + SENTENCES.length, kept = loadJson("duo.audioMap", {});
+      if (kept.key === key && Array.isArray(kept.map)) return { idx: idx, map: kept.map };
+      var r = alignAudio(idx, SENTENCES.map(function (x) { return x.en; }));
+      var map = r.score > .5 ? r.map : idx.guess;
+      save("duo.audioMap", JSON.stringify({ key: key, map: map }));
+      return { idx: idx, map: map };
+    });
+    audioMapP.catch(function () { audioMapP = null; }); // try again on the next tap
+    return audioMapP;
+  }
+  // a track, decoded; the last few are kept in memory
+  var decoded = {}, decodedOrder = [];
+  function audioTrack(idx, ti) {
+    if (decoded[ti]) return decoded[ti];
+    var name = idx.tracks[ti].file;
+    var p = audioStore("readonly", function (st) { return st.get(name); }).then(function (rec) {
+      if (rec && rec.body) return rec.body;
+      return audioFetch(name, "", "arrayBuffer").then(function (got) {
+        audioStore("readwrite", function (st) { return st.put({ body: got.body }, name); });
+        return got.body;
+      });
+    }).then(function (buf) {
+      return new Promise(function (resolve, reject) {
+        var r = actx.decodeAudioData(buf.slice(0), resolve, reject);
+        if (r && r.then) r.then(resolve, reject);
+      });
+    });
+    decoded[ti] = p;
+    decodedOrder.push(ti);
+    if (decodedOrder.length > 4) delete decoded[decodedOrder.shift()];
+    p.catch(function () { if (decoded[ti] === p) delete decoded[ti]; });
+    return p;
+  }
+
+  var actx = null, playing = null;
+  function paintSay(sid, state, msg) {
+    var card = $detail.querySelector('.sentence-card[data-sid="' + sid + '"]');
+    if (!card) return;
+    var btn = card.querySelector("[data-say]"), out = card.querySelector(".say-msg");
+    if (btn) { btn.dataset.state = state || ""; btn.setAttribute("aria-pressed", state === "play" || state === "load"); }
+    if (out) out.textContent = msg || "";
+  }
+  function sayStop() {
+    if (!playing) return;
+    var p = playing;
+    playing = null;
+    try { if (p.src) p.src.stop(); } catch (e) {}
+    paintSay(p.sid, "");
+  }
+  function say(sid) {
+    if (playing && playing.sid === sid) { sayStop(); return; }
+    sayStop();
+    if (!notesKey) { paintSay(sid, "", "音声を聞くには、解説と同じ GitHub の合鍵が要ります（下の解説から入れられます）。"); return; }
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { paintSay(sid, "", "このブラウザでは音声を鳴らせません。"); return; }
+    // iPhone: play through the silent switch like a music app, and wake the audio while the finger is still on the button
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+    if (!actx) actx = new AC();
+    if (actx.resume) actx.resume();
+    try { var tick = actx.createBufferSource(); tick.buffer = actx.createBuffer(1, 1, 22050); tick.connect(actx.destination); tick.start(0); } catch (e) {}
+    var me = { sid: sid, src: null };
+    playing = me;
+    paintSay(sid, "load");
+    audioMap().then(function (a) {
+      var m = a.map[sid - 1];
+      if (!m) throw new Error("none");
+      return audioTrack(a.idx, m[0]).then(function (buf) { return [m, buf]; });
+    }).then(function (x) {
+      if (playing !== me) return;
+      var m = x[0], buf = x[1], from = Math.max(0, m[1] - .12), to = Math.min(buf.duration, m[2] + .3);
+      var src = actx.createBufferSource();
+      src.buffer = buf;
+      src.connect(actx.destination);
+      src.onended = function () { if (playing === me) { playing = null; paintSay(sid, ""); } };
+      src.start(0, from, to - from);
+      me.src = src;
+      paintSay(sid, "play");
+    }).catch(function (err) {
+      if (playing !== me) return;
+      playing = null;
+      paintSay(sid, "", err.message === "key" ? "合鍵で duo-audio を読めません。GitHub のトークンの設定で、読めるリポジトリに duo-audio を足してください。"
+        : err.message === "none" ? "この例文の音声が見つかりませんでした。"
+        : err.message === "net" ? "音声を読めませんでした。はじめて聞く例文は電波のあるところで開いてください。"
+        : "音声を鳴らせませんでした。");
+    });
+  }
+
   // ---------- highlighter (assets/marks.js): which DUO word owns each character of a sentence ----------
   var sentenceMarks = window.DuoMarks(DATA).marks;
 
@@ -692,6 +870,7 @@
     next5: '<svg viewBox="0 0 24 24"><path d="M5 5l7 7-7 7M12 5l7 7-7 7"/></svg>',
     del: '<svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>',
     drop: '<svg viewBox="0 0 24 24"><path class="drop" d="M12 3.6c3.4 4.1 5.7 7.2 5.7 10.1a5.7 5.7 0 0 1-11.4 0c0-2.9 2.3-6 5.7-10.1Z"/></svg>',
+    say: '<svg viewBox="0 0 24 24"><path class="spk" d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3z"/><path class="w1" d="M15.5 9.2a4 4 0 0 1 0 5.6"/><path class="w2" d="M18.2 6.6a7.6 7.6 0 0 1 0 10.8"/></svg>',
     clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.8V12l2.8 1.8"/></svg>'
   };
 
@@ -726,6 +905,7 @@
     var s = SENTENCES[sid - 1];
     var siblings = wordsBySid[sid] || [];
     var same = !opts.home && !opts.shuffle && sid === lastSid;
+    if (playing && playing.sid !== sid) sayStop();
     var dir = same ? "same" : lastSid === null ? "" : opts.shuffle || sid > lastSid ? "dir-next" : "dir-prev";
     var p = (sid - 1) / (SENTENCES.length - 1);
     // on a word's page the color belongs to the word, as in the list
@@ -796,9 +976,10 @@
 
     html += '<section class="sentence-card' + (same ? " static" : "") + '"' + colorAttrs(key) + ' data-sid="' + sid + '" aria-label="例文 ' + sid + '">' +
       '<div class="card-head"><span class="card-num">#' + pad3(sid) + '</span><span class="card-of">/ ' + SENTENCES.length + "</span>" +
-        '<button type="button" class="syn-btn" data-syn hidden aria-pressed="' + synOn + '" title="文型の色分け"><i class="syn-dots" aria-hidden="true"><b data-r="S"></b><b data-r="V"></b><b data-r="O"></b></i>文型</button></div>' +
+        '<button type="button" class="syn-btn" data-syn hidden aria-pressed="' + synOn + '" title="文型の色分け"><i class="syn-dots" aria-hidden="true"><b data-r="S"></b><b data-r="V"></b><b data-r="O"></b></i>文型</button>' +
+        (notesKey ? '<button type="button" class="say-btn" data-say aria-pressed="false" aria-label="この例文の音声">' + ICON.say + "</button>" : "") + "</div>" +
       '<p class="sentence-en" lang="en">' + renderSentenceHtml(sid, word && word.id) + "</p>" +
-      '<p class="sentence-ja">' + esc(s.ja) + "</p></section>";
+      '<p class="sentence-ja">' + esc(s.ja) + '</p><p class="say-msg" role="status"></p></section>';
 
     if (word) html += partsCard(word);
     html += noteCard(sid, word);
@@ -845,6 +1026,7 @@
     lastP = p;
     setupReveal(same);
     showNote();
+    if (playing && playing.sid === sid) paintSay(sid, playing.src ? "play" : "load");
   }
 
   // ---------- hide & reveal: a hidden sentence is blurred and cleared one word at a time ----------
@@ -1469,6 +1651,7 @@
       setTimeout(closePops, 260); // let the choice show before the drop closes
       return;
     }
+    if ((t = e.target.closest("[data-say]"))) { say(+t.closest(".sentence-card").dataset.sid); return; }
     if ((t = e.target.closest("[data-syn]"))) {
       synOn = !synOn;
       save("duo.syn", synOn ? "1" : "0");

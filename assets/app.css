@@ -537,11 +537,31 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   background: var(--glass-flat); box-shadow: var(--glass-inset);
   transition: color .25s, background-color .25s, transform .35s var(--spring);
 }
+.syn-btn[hidden] { display: none; }
 .syn-btn:active { transform: scale(.92); }
 .syn-btn[aria-pressed="true"] { color: var(--text); background: color-mix(in srgb, var(--marker) 16%, transparent); }
 .syn-dots { display: inline-flex; gap: 3px; }
 .syn-dots b { width: 6px; height: 6px; border-radius: 50%; background: var(--role); opacity: .35; transition: opacity .25s; }
 .syn-btn[aria-pressed="true"] .syn-dots b { opacity: 1; }
+/* the CD's voice for this sentence: a round glass button; the waves ripple while it plays */
+.say-btn {
+  flex: none; align-self: center; display: grid; place-items: center; width: 36px; height: 36px; margin-left: 8px; border-radius: 50%;
+  color: var(--muted); background: var(--glass-flat); box-shadow: var(--glass-inset);
+  transition: color .25s, background-color .25s, transform .35s var(--spring);
+}
+.syn-btn[hidden] + .say-btn { margin-left: auto; }
+.say-btn:active { transform: scale(.88); }
+.say-btn svg { width: 20px; height: 20px; }
+.say-btn .spk { fill: currentColor; stroke-width: 1.4; }
+.say-btn[data-state="play"], .say-btn[data-state="load"] { color: var(--marker); background: color-mix(in srgb, var(--marker) 18%, transparent); }
+.say-btn[data-state="load"] .w1, .say-btn[data-state="load"] .w2 { opacity: .25; animation: say-load 1s ease-in-out infinite; }
+.say-btn[data-state="load"] .w2 { animation-delay: .25s; }
+.say-btn[data-state="play"] .w1, .say-btn[data-state="play"] .w2 { animation: say-wave .9s ease-in-out infinite; }
+.say-btn[data-state="play"] .w2 { animation-delay: .18s; }
+@keyframes say-wave { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@keyframes say-load { 0%, 100% { opacity: .2; } 50% { opacity: .7; } }
+.say-msg { margin: 10px 0 0; font-size: 13px; line-height: 1.6; color: var(--fix); }
+.say-msg:empty { display: none; }
 [data-r="S"] { --role: var(--tech); }
 [data-r="V"] { --role: var(--marker); }
 [data-r="O"] { --role: var(--fix); }
