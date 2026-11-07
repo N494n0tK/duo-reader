@@ -591,7 +591,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 /* the pen lifts at the end of a chunk */
 .syn-in .sentence-en .wd[data-r]:not([data-join])::before { transition-timing-function: cubic-bezier(.25, .7, .35, 1), linear; }
 .sentence-en .wd[data-tag]::after {
-  content: attr(data-tag); position: absolute; left: -1px; top: calc(100% + .36em);
+  content: attr(data-tag); position: absolute; left: calc(var(--tx, 0px) - 1px); top: calc(100% + .36em);
   padding: 2px 4px; border-radius: 4px; background: color-mix(in srgb, var(--role) 15%, transparent);
   font: 700 9px/1 var(--mono); letter-spacing: .05em; color: var(--role); white-space: nowrap;
   pointer-events: none; opacity: 0; transform: translateY(-5px) scale(.7); transform-origin: left top; filter: blur(3px);
