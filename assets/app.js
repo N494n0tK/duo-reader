@@ -542,36 +542,48 @@
   // index.json lists each track's stretches of speech (with what speech recognition heard in them) and which stretch is
   // which sentence; a track is fetched the first time one of its sentences is played and kept, so it plays offline after that.
   var AUDIO_URL = "https://api.github.com/repos/N494n0tK/duo-audio/contents/";
+  // nothing here may wait forever: a stalled download or a storage that never answers would leave the button spinning
+  function within(p, ms, why) {
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () { reject(new Error(why)); }, ms);
+      p.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+    });
+  }
   var audioDb = null;
   function audioStore(mode, fn) {
-    if (!audioDb) audioDb = new Promise(function (resolve) {
+    // iPhone's storage sometimes never answers the first time it is opened: give up after a moment and try again next time
+    if (!audioDb) audioDb = within(new Promise(function (resolve) {
       try {
         var req = indexedDB.open("duo-audio", 1);
         req.onupgradeneeded = function () { req.result.createObjectStore("files"); };
         req.onsuccess = function () { resolve(req.result); };
         req.onerror = function () { resolve(null); };
       } catch (e) { resolve(null); }
-    });
+    }), 3000, "db").catch(function () { audioDb = null; return null; });
     return audioDb.then(function (db) {
       if (!db) return null;
-      return new Promise(function (resolve) {
+      return within(new Promise(function (resolve) {
         try {
           var req = fn(db.transaction("files", mode).objectStore("files"));
           req.onsuccess = function () { resolve(req.result || null); };
           req.onerror = function () { resolve(null); };
         } catch (e) { resolve(null); }
-      });
+      }), 4000, "db").catch(function () { return null; });
     });
   }
   function audioFetch(name, etag, type) {
     var headers = { Authorization: "Bearer " + notesKey, Accept: "application/vnd.github.raw+json" };
     if (etag) headers["If-None-Match"] = etag;
-    return fetch(AUDIO_URL + encodeURIComponent(name), { headers: headers, cache: "no-store" }).then(function (res) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var t = setTimeout(function () { if (ctl) ctl.abort(); }, type === "text" ? 15000 : 25000);
+    var p = fetch(AUDIO_URL + encodeURIComponent(name), { headers: headers, cache: "no-store", signal: ctl ? ctl.signal : undefined }).then(function (res) {
       if (res.status === 304) return null;
       if (res.status === 401 || res.status === 403 || res.status === 404) throw new Error("key");
       if (!res.ok) throw new Error("net");
       return res[type]().then(function (body) { return { body: body, etag: res.headers.get("ETag") || "" }; });
-    }, function () { throw new Error("net"); });
+    }).catch(function (e) { throw new Error(e && e.message === "key" ? "key" : "net"); });
+    p.then(function () { clearTimeout(t); }, function () { clearTimeout(t); });
+    return within(p, type === "text" ? 16000 : 26000, "net");
   }
 
   function alignAudio(idx, texts) {
@@ -650,10 +662,10 @@
         return got.body;
       });
     }).then(function (buf) {
-      return new Promise(function (resolve, reject) {
+      return within(new Promise(function (resolve, reject) {
         var r = actx.decodeAudioData(buf.slice(0), resolve, reject);
         if (r && r.then) r.then(resolve, reject);
-      });
+      }), 15000, "decode");
     });
     decoded[ti] = p;
     decodedOrder.push(ti);
@@ -663,6 +675,28 @@
   }
 
   var actx = null, playing = null;
+  // the sound is "running" only while the clock moves; after the phone slept, a call came in or the app was in the
+  // background, iPhone leaves it "interrupted" or "suspended" and anything played on it is silent
+  function wakeAudio(AC) {
+    if (actx && actx.state !== "running") {
+      try { actx.close(); } catch (e) {}
+      actx = null;
+    }
+    if (!actx) actx = new AC();
+    if (actx.resume) { try { actx.resume(); } catch (e) {} }
+    try { var tick = actx.createBufferSource(); tick.buffer = actx.createBuffer(1, 1, 22050); tick.connect(actx.destination); tick.start(0); } catch (e) {}
+  }
+  function audioRunning() {
+    var ctx = actx;
+    if (!ctx) return Promise.reject(new Error("mute"));
+    if (ctx.state === "running") return Promise.resolve();
+    return within(new Promise(function (resolve) {
+      function check() { if (ctx.state === "running") { ctx.removeEventListener("statechange", check); resolve(); } }
+      ctx.addEventListener("statechange", check);
+      if (ctx.resume) ctx.resume().then(check, function () {});
+      check();
+    }), 2500, "mute");
+  }
   function paintSay(sid, state, msg) {
     var card = $detail.querySelector('.sentence-card[data-sid="' + sid + '"]');
     if (!card) return;
@@ -685,35 +719,46 @@
     if (!AC) { paintSay(sid, "", "このブラウザでは音声を鳴らせません。"); return; }
     // iPhone: play through the silent switch like a music app, and wake the audio while the finger is still on the button
     try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
-    if (!actx) actx = new AC();
-    if (actx.resume) actx.resume();
-    try { var tick = actx.createBufferSource(); tick.buffer = actx.createBuffer(1, 1, 22050); tick.connect(actx.destination); tick.start(0); } catch (e) {}
+    wakeAudio(AC);
     var me = { sid: sid, src: null };
     playing = me;
     paintSay(sid, "load");
     audioMap().then(function (a) {
       var m = a.map[sid - 1];
       if (!m) throw new Error("none");
-      return audioTrack(a.idx, m[0]).then(function (buf) { return [m, buf]; });
+      return audioTrack(a.idx, m[0]).then(function (buf) { return audioRunning().then(function () { return [m, buf]; }); });
     }).then(function (x) {
       if (playing !== me) return;
       var m = x[0], buf = x[1], from = Math.max(0, m[1] - .12), to = Math.min(buf.duration, m[2] + .3);
-      var src = actx.createBufferSource();
+      var ctx = actx, src = ctx.createBufferSource(), t0 = ctx.currentTime;
       src.buffer = buf;
-      src.connect(actx.destination);
+      src.connect(ctx.destination);
       src.onended = function () { if (playing === me) { playing = null; paintSay(sid, ""); } };
       src.start(0, from, to - from);
       me.src = src;
       paintSay(sid, "play");
+      // if the clock does not move, nothing is heard: say so instead of showing the waves forever
+      setTimeout(function () {
+        if (playing === me && ctx.currentTime - t0 < .1) {
+          sayStop();
+          actx = null;
+          paintSay(sid, "", "音が出ませんでした。もう一度タップしてください。");
+        }
+      }, 900);
+      setTimeout(function () { if (playing === me) sayStop(); }, (to - from + 1.5) * 1000);
     }).catch(function (err) {
       if (playing !== me) return;
       playing = null;
+      if (err.message === "mute") actx = null;
       paintSay(sid, "", err.message === "key" ? "合鍵で duo-audio を読めません。GitHub のトークンの設定で、読めるリポジトリに duo-audio を足してください。"
         : err.message === "none" ? "この例文の音声が見つかりませんでした。"
-        : err.message === "net" ? "音声を読めませんでした。はじめて聞く例文は電波のあるところで開いてください。"
+        : err.message === "net" ? "音声を読めませんでした（時間切れか圏外）。電波のあるところでもう一度タップしてください。"
+        : err.message === "mute" ? "音が出ませんでした。もう一度タップしてください。"
         : "音声を鳴らせませんでした。");
     });
   }
+
+  document.addEventListener("visibilitychange", function () { if (document.hidden) sayStop(); });
 
   // ---------- highlighter (assets/marks.js): which DUO word owns each character of a sentence ----------
   var sentenceMarks = window.DuoMarks(DATA).marks;
