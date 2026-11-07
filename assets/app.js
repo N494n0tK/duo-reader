@@ -237,7 +237,7 @@
   // the look at the whole sentence can be folded away with the v button; it stays folded on the next sentence too
   var ntSentOpen = load("duo.ntSent") !== "0";
   // the sentence's skeleton (S / V / O / C / M) drawn right on the example sentence; the 文型 button turns it on and off
-  var synOn = load("duo.syn") !== "0";
+  var synOn = load("duo.syn") !== "0", renderAt = 0;
   function roleKey(role) {
     var r = String(role || "").trim();
     return /^[SVOCM]/i.test(r) ? r.charAt(0).toUpperCase() : "X";
@@ -408,25 +408,37 @@
     });
     return out;
   }
-  // color the words of the sentence by their part (S / V / O / C / M); the first word of each chunk carries its letter
+  // color the words of the sentence by their part (S / V / O / C / M); the first word of each chunk carries its letter.
+  // The lines are not there at once: a pen draws them left to right, chunk after chunk, after the highlighter has gone by.
+  var SYN_PEN = 22, SYN_GAP = 100; // ms per letter, pause between chunks
+  function sameLine(a, b) { return Math.abs(a.getBoundingClientRect().bottom - b.getBoundingClientRect().bottom) < 4; }
   function paintSyntax(sid, parts) {
     var card = $detail.querySelector('.sentence-card[data-sid="' + sid + '"]');
     if (!card) return;
     var en = card.querySelector(".sentence-en"), btn = card.querySelector("[data-syn]");
-    Array.prototype.forEach.call(en.querySelectorAll(".wd[data-r]"), function (w) { delete w.dataset.r; delete w.dataset.tag; });
     var ranges = parts && parts.length ? syntaxRanges(SENTENCES[sid - 1].en, parts) : [];
+    var sig = JSON.stringify(ranges);
     btn.hidden = !ranges.length;
-    card.classList.toggle("syn", synOn && ranges.length > 0);
+    // the saved note and the fresh one are usually the same: leave the lines alone instead of drawing them twice
+    if (card.dataset.synSig === sig) { card.classList.toggle("syn", synOn && ranges.length > 0); return; }
+    card.dataset.synSig = sig;
+    card.classList.remove("syn");
+    Array.prototype.forEach.call(en.querySelectorAll(".wd[data-r]"), function (w) {
+      delete w.dataset.r; delete w.dataset.tag; delete w.dataset.join;
+      w.style.removeProperty("--sd"); w.style.removeProperty("--sl");
+    });
     if (!ranges.length) return;
     var walker = document.createTreeWalker(en, NodeFilter.SHOW_TEXT, {
       acceptNode: function (n) { return n.parentNode.closest("rt") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT; }
     });
-    var at = 0, n, tagged = {};
+    var at = 0, n, tagged = {}, words = [];
     while ((n = walker.nextNode())) {
       var wd = n.parentNode.closest(".wd");
       if (wd && /\S/.test(n.nodeValue)) {
         for (var k = 0; k < ranges.length; k++) {
           if (at >= ranges[k][0] && at < ranges[k][1]) {
+            if (!wd.dataset.r) words.push({ el: wd, k: k, at: at, len: n.nodeValue.length });
+            else words[words.length - 1].len += n.nodeValue.length; // a word split by a marker edge
             wd.dataset.r = roleKey(ranges[k][2]);
             if (!tagged[k]) { tagged[k] = true; wd.dataset.tag = String(ranges[k][2]).trim(); }
             break;
@@ -435,6 +447,34 @@
       }
       at += n.nodeValue.length;
     }
+    // the pen's timing: each word starts where the last one left off; a new chunk waits a beat
+    var t = 0, chunk = -1;
+    words.forEach(function (w, i) {
+      var next = words[i + 1], s = w.el.style;
+      if (w.k !== chunk) { if (chunk > -1) t += SYN_GAP; chunk = w.k; }
+      // the line runs on under the space to the next word of the same chunk
+      var same = next && next.k === w.k, join = same && next.at > w.at + w.len && sameLine(w.el, next.el);
+      if (join) w.el.dataset.join = "";
+      var len = same ? next.at - w.at : w.len;
+      s.setProperty("--sd", Math.round(t) + "ms");
+      s.setProperty("--sl", Math.round(Math.max(90, len * SYN_PEN)) + "ms");
+      t += len * SYN_PEN;
+    });
+    card.dataset.synT = Math.round(t);
+    if (!synOn) return;
+    // a sentence just opened: let the highlighter finish its words first. Moving between its words: lines already there.
+    if (card.classList.contains("static")) {
+      card.classList.add("syn-now", "syn");
+      requestAnimationFrame(function () { requestAnimationFrame(function () { card.classList.remove("syn-now"); }); });
+    } else drawSyntax(card, Math.max(0, 260 + en.querySelectorAll(".hl").length * 110 - (performance.now() - renderAt)));
+  }
+  // put the pen down: the delays hold only while it draws, so a theme change afterwards recolors every word at once
+  function drawSyntax(card, start) {
+    card.style.setProperty("--s0", Math.round(start) + "ms");
+    void card.offsetWidth;
+    card.classList.add("syn", "syn-in");
+    clearTimeout(card._synTimer);
+    card._synTimer = setTimeout(function () { card.classList.remove("syn-in"); }, start + (+card.dataset.synT || 0) + 900);
   }
 
   function showNote() {
@@ -1013,6 +1053,7 @@
 
     html += "</article>";
     $detail.innerHTML = html;
+    renderAt = performance.now();
     if (!same) $detail.scrollTop = 0;
 
     // slide the rail and gauge cursors from the previous sentence to this one
@@ -1655,7 +1696,9 @@
       synOn = !synOn;
       save("duo.syn", synOn ? "1" : "0");
       t.setAttribute("aria-pressed", synOn);
-      t.closest(".sentence-card").classList.toggle("syn", synOn);
+      var sc = t.closest(".sentence-card");
+      if (synOn) drawSyntax(sc, 0);
+      else { clearTimeout(sc._synTimer); sc.classList.remove("syn", "syn-in"); }
       return;
     }
     if ((t = e.target.closest(".dock .nav-btn")) && t.closest(".reveal")) {

@@ -541,8 +541,11 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .syn-btn:active { transform: scale(.92); }
 .syn-btn[aria-pressed="true"] { color: var(--text); background: color-mix(in srgb, var(--marker) 16%, transparent); }
 .syn-dots { display: inline-flex; gap: 3px; }
-.syn-dots b { width: 6px; height: 6px; border-radius: 50%; background: var(--role); opacity: .35; transition: opacity .25s; }
-.syn-btn[aria-pressed="true"] .syn-dots b { opacity: 1; }
+.syn-dots b { width: 6px; height: 6px; border-radius: 50%; background: var(--role); opacity: .35; transition: opacity .25s, transform .4s var(--spring); }
+.syn-btn[aria-pressed="true"] .syn-dots b { opacity: 1; animation: dot-hop .5s var(--spring) both; }
+.syn-btn[aria-pressed="true"] .syn-dots b:nth-child(2) { animation-delay: .07s; }
+.syn-btn[aria-pressed="true"] .syn-dots b:nth-child(3) { animation-delay: .14s; }
+@keyframes dot-hop { 40% { transform: translateY(-3px) scale(1.25); } }
 /* the CD's voice for this sentence: a round glass button; the waves ripple while it plays */
 .say-btn {
   flex: none; align-self: center; display: grid; place-items: center; width: 36px; height: 36px; margin-left: 8px; border-radius: 50%;
@@ -568,19 +571,40 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 [data-r="C"] { --role: var(--game); }
 [data-r="M"] { --role: var(--muted); }
 [data-r="X"] { --role: var(--faint); }
-.sentence-en .wd[data-r] {
-  text-decoration: underline 2.5px transparent; text-underline-offset: .3em; text-decoration-skip-ink: none;
-  transition: color .45s var(--ease), text-shadow .55s var(--ease), text-decoration-color .35s var(--ease);
-}
-.syn .sentence-en .wd[data-r] { text-decoration-color: color-mix(in srgb, var(--role) 90%, transparent); }
+/* each line is drawn by a pen, left to right, chunk after chunk: --sd is when the pen reaches the word, --sl how long it takes to cross it,
+   --s0 waits for the highlighter. The word takes on its color as the pen passes, and the chunk's letter drops in under it. */
+.sentence-en .wd[data-r] { position: relative; transition: color .45s var(--ease), text-shadow .55s var(--ease); }
 .syn:not(.rv) .sentence-en .wd[data-r] { color: color-mix(in srgb, var(--role) 42%, var(--text)); }
-.sentence-en .wd[data-tag] { position: relative; }
-.sentence-en .wd[data-tag]::after {
-  content: attr(data-tag); position: absolute; left: 0; top: calc(100% + .52em);
-  font: 700 9.5px/1 var(--mono); letter-spacing: .03em; color: var(--role); white-space: nowrap;
-  pointer-events: none; opacity: 0; transform: translateY(-3px); transition: opacity .3s var(--ease), transform .35s var(--spring);
+.syn-in:not(.rv) .sentence-en .wd[data-r] { transition: color .7s var(--ease) calc(var(--s0, 0ms) + var(--sd, 0ms)), text-shadow .55s var(--ease); }
+.sentence-en .wd[data-r]::before {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -.12em; height: 2.5px; border-radius: 2px;
+  background: var(--role); box-shadow: 0 0 9px -1px color-mix(in srgb, var(--role) 70%, transparent);
+  transform: scaleX(0); transform-origin: left center; opacity: 0; pointer-events: none;
+  transition: transform .32s var(--ease), opacity .28s var(--ease);
 }
-.syn .sentence-en .wd[data-tag]::after { opacity: .95; transform: none; }
+/* under the space to the next word of the same chunk, so a chunk reads as one stroke and chunks stand apart */
+.sentence-en .wd[data-join]::before { right: -.3em; }
+.syn .sentence-en .wd[data-r]::before { transform: none; opacity: .92; }
+.syn-in .sentence-en .wd[data-r]::before {
+  transition: transform var(--sl, .3s) linear calc(var(--s0, 0ms) + var(--sd, 0ms)), opacity .1s linear calc(var(--s0, 0ms) + var(--sd, 0ms));
+}
+/* the pen lifts at the end of a chunk */
+.syn-in .sentence-en .wd[data-r]:not([data-join])::before { transition-timing-function: cubic-bezier(.25, .7, .35, 1), linear; }
+.sentence-en .wd[data-tag]::after {
+  content: attr(data-tag); position: absolute; left: -1px; top: calc(100% + .36em);
+  padding: 2px 4px; border-radius: 4px; background: color-mix(in srgb, var(--role) 15%, transparent);
+  font: 700 9px/1 var(--mono); letter-spacing: .05em; color: var(--role); white-space: nowrap;
+  pointer-events: none; opacity: 0; transform: translateY(-5px) scale(.7); transform-origin: left top; filter: blur(3px);
+  transition: opacity .2s var(--ease), transform .25s var(--ease), filter .2s var(--ease);
+}
+.syn .sentence-en .wd[data-tag]::after { opacity: 1; transform: none; filter: none; }
+.syn-in .sentence-en .wd[data-tag]::after {
+  transition: opacity .4s var(--ease) calc(var(--s0, 0ms) + var(--sd, 0ms) + 40ms),
+    transform .55s var(--spring) calc(var(--s0, 0ms) + var(--sd, 0ms) + 40ms),
+    filter .4s var(--ease) calc(var(--s0, 0ms) + var(--sd, 0ms) + 40ms);
+}
+/* moving between the words of the same sentence: the lines are already there */
+.syn-now .sentence-en .wd, .syn-now .sentence-en .wd::before, .syn-now .sentence-en .wd::after { transition: none !important; }
 .syn .sentence-en { line-height: 2.6; }
 .sentence-en { transition: line-height .35s var(--ease); }
 .static .hl { animation: none; --draw: 1; }
