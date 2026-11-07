@@ -635,13 +635,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .ipa-src { font: 11px var(--mono); color: var(--faint); }
 .ety-card { margin-top: 18px; }
 .ety-card .card-num { font-size: 24px; }
-.ety-credit { font-size: 12px; color: var(--faint); margin: 12px 0 0; }
 .ety-card a { color: inherit; text-decoration: underline; text-decoration-color: var(--marker-strong); text-underline-offset: 3px; }
-.token-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 12px; }
-.token-list li { display: grid; grid-template-columns: minmax(80px, auto) 1fr; gap: 2px 14px; align-items: baseline; }
-.tok { font: 18px var(--serif); }
-.tok-link { font: inherit; text-decoration: underline; text-decoration-color: var(--marker-strong); text-underline-offset: 3px; }
-.tok-ipa { font-size: 13px; color: var(--muted); }
 
 /* ===== Explanations written by ChatGPT (duo-notes) ===== */
 .note-card .card-head { align-items: baseline; }

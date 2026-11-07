@@ -148,19 +148,6 @@
   var LX = window.LEXICON_DATA || { words: {}, tokens: {} };
   var IPA_SRC = { wiktionary: "Wiktionary", cmudict: "CMU発音辞書", composed: "語ごとの発音をつないだもの" };
 
-  // a phrase: the words it is made of, each with its pronunciation (the explanations come from the notes below)
-  function partsCard(word) {
-    var lx = LX.words[word.id];
-    if (!lx || lx.etyJa || lx.etyEn || !lx.tokens || !lx.tokens.length) return "";
-    return '<section class="sentence-card ety-card" aria-label="構成する語"><div class="card-head"><span class="card-num">構成する語</span></div><ul class="token-list">' +
-      lx.tokens.map(function (t) {
-        var info = LX.tokens[t] || {};
-        var duo = WORDS.filter(function (w) { return w.word.toLowerCase() === t; })[0];
-        return '<li><span class="tok" lang="en">' + (duo ? '<button class="tok-link" data-href="#/w/' + duo.id + '">' + esc(t) + "</button>" : esc(t)) + "</span>" +
-          (info.ipa ? '<span class="tok-ipa">' + esc(info.ipa) + "</span>" : "") + "</li>";
-      }).join("") + '</ul><p class="ety-credit">発音は Wiktionary（CC BY-SA 4.0）より</p></section>';
-  }
-
   // ---------- explanations: ChatGPT writes notes/s001.json … into the private repository duo-notes ----------
   // One file per sentence, in the "duo-note/1" shape (AI-SKILLs duo-deep-research/duo-note.schema.json):
   // a short look at the sentence, then a full card for each headword. A word's page shows only its own card.
@@ -1107,7 +1094,6 @@
       '<p class="sentence-en" lang="en">' + renderSentenceHtml(sid, word && word.id) + "</p>" +
       '<p class="sentence-ja">' + esc(s.ja) + '</p><p class="say-msg" role="status"></p></section>';
 
-    if (word) html += partsCard(word);
     html += noteCard(sid, word);
 
     var related = word ? termsByWord[word.id] || [] : [];
