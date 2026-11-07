@@ -776,8 +776,9 @@
     if (!notesKey) { paintSay(sid, "", "音声を聞くには、解説と同じ GitHub の合鍵が要ります（下の解説から入れられます）。"); return; }
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) { paintSay(sid, "", "このブラウザでは音声を鳴らせません。"); return; }
-    // iPhone: play through the silent switch like a music app, and wake the audio while the finger is still on the button
-    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+    // iPhone: play through the silent switch like a music app, and wake the audio while the finger is still on the button.
+    // With "together with music" on, the voice is a short announcement instead: the music keeps going and only dips under it.
+    try { if (navigator.audioSession) navigator.audioSession.type = sayMix ? "transient" : "playback"; } catch (e) {}
     wakeAudio(AC);
     var me = { sid: sid, src: null };
     playing = me;
@@ -790,10 +791,13 @@
       if (playing !== me) return;
       var m = x[0], buf = x[1], from = Math.max(0, m[1] - .12), to = Math.min(buf.duration, m[2] + .3);
       var ctx = actx, src = ctx.createBufferSource(), t0 = ctx.currentTime;
-      src.buffer = buf;
+      // ×1.2 / ×0.8: the stretch keeps the voice at its own pitch, so faster does not mean higher
+      var fast = sayRate !== 1 ? stretchedClip(ctx, buf, from, to, sayRate) : null;
+      src.buffer = fast || buf;
       src.connect(ctx.destination);
       src.onended = function () { if (playing === me) { playing = null; paintSay(sid, ""); } };
-      src.start(0, from, to - from);
+      if (fast) { src.start(0); from = 0; to = fast.duration; }
+      else src.start(0, from, to - from);
       me.src = src;
       paintSay(sid, "play");
       // if the clock does not move, nothing is heard: say so instead of showing the waves forever
@@ -818,6 +822,74 @@
   }
 
   document.addEventListener("visibilitychange", function () { if (document.hidden) sayStop(); });
+
+  // ---------- how the voice plays: speed (×0.8 / ×1 / ×1.2) and "together with music", chosen by holding the speaker ----------
+  var SAY_RATES = [0.8, 1, 1.2];
+  var sayPref = loadJson("duo.say", {});
+  var sayRate = SAY_RATES.indexOf(sayPref.rate) > -1 ? sayPref.rate : 1, sayMix = !!sayPref.mix;
+  function saveSayPref() { save("duo.say", JSON.stringify({ rate: sayRate, mix: sayMix })); }
+  // the speaker shows what it will do: ×1.2 / ×0.8 in a tag, a note when the music keeps playing
+  function sayBadges() {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-say]"), function (b) {
+      if (sayRate === 1) b.removeAttribute("data-rate"); else b.dataset.rate = String(sayRate);
+      b.classList.toggle("mix", sayMix);
+    });
+  }
+
+  // Time stretch (WSOLA): the clip is cut into overlapping 40 ms pieces, laid down at a new spacing, and each piece is
+  // nudged (±12 ms) to where it best continues the one before, so the speed changes and the pitch stays.
+  var stretchCache = [];
+  function stretchedClip(ctx, buf, from, to, rate) {
+    for (var c = 0; c < stretchCache.length; c++) {
+      var hit = stretchCache[c];
+      if (hit.buf === buf && hit.from === from && hit.to === to && hit.rate === rate) return hit.out;
+    }
+    var out = stretch(ctx, buf, from, to, rate);
+    stretchCache.push({ buf: buf, from: from, to: to, rate: rate, out: out });
+    if (stretchCache.length > 6) stretchCache.shift();
+    return out;
+  }
+  function stretch(ctx, buf, from, to, rate) {
+    var sr = buf.sampleRate, nch = buf.numberOfChannels;
+    var s0 = Math.max(0, Math.floor(from * sr)), n = Math.min(buf.length, Math.ceil(to * sr)) - s0;
+    var W = Math.round(sr * .04) & ~1, Hs = W / 2, Ha = Hs * rate, tol = Math.round(sr * .012), STEP = 3;
+    if (n < W * 2) return null;
+    var ins = [], c, i;
+    for (c = 0; c < nch; c++) ins.push(buf.getChannelData(c).subarray(s0, s0 + n));
+    var mono = new Float32Array(n);
+    for (c = 0; c < nch; c++) for (i = 0; i < n; i++) mono[i] += ins[c][i];
+    var win = new Float32Array(W);
+    for (i = 0; i < W; i++) win[i] = .5 - .5 * Math.cos(2 * Math.PI * i / W); // two halves overlapping add up to 1
+    var len = Math.ceil(n / rate) + W, outs = [];
+    for (c = 0; c < nch; c++) outs.push(new Float32Array(len));
+    var prev = 0, end = 0;
+    for (var k = 0; ; k++) {
+      var at = k * Hs, nominal = Math.round(k * Ha);
+      if (at + W > len || nominal + W > n) break;
+      var best = nominal;
+      if (k > 0 && prev + Hs + Hs <= n) {
+        // the piece that would naturally follow the last one: find the candidate that sounds most like it
+        var target = prev + Hs, score = -Infinity;
+        for (var d = -tol; d <= tol; d += 2) {
+          var cand = nominal + d;
+          if (cand < 0 || cand + W > n) continue;
+          var dot = 0, en = 1e-9;
+          for (i = 0; i < Hs; i += STEP) { var v = mono[cand + i]; dot += mono[target + i] * v; en += v * v; }
+          var sc = dot / Math.sqrt(en);
+          if (sc > score) { score = sc; best = cand; }
+        }
+      }
+      for (c = 0; c < nch; c++) {
+        var src = ins[c], dst = outs[c];
+        for (i = 0; i < W; i++) dst[at + i] += src[best + i] * win[i];
+      }
+      prev = best;
+      end = at + W;
+    }
+    var out = ctx.createBuffer(nch, Math.max(1, end), sr);
+    for (c = 0; c < nch; c++) out.getChannelData(c).set(outs[c].subarray(0, end));
+    return out;
+  }
 
   // ---------- highlighter (assets/marks.js): which DUO word owns each character of a sentence ----------
   var sentenceMarks = window.DuoMarks(DATA).marks;
@@ -1212,6 +1284,7 @@
     setupReveal(same);
     showNote();
     if (playing && playing.sid === sid) paintSay(sid, playing.src ? "play" : "load");
+    sayBadges();
   }
 
   // ---------- hide & reveal: a hidden sentence is blurred and cleared one word at a time ----------
@@ -1836,7 +1909,7 @@
       setTimeout(closePops, 260); // let the choice show before the drop closes
       return;
     }
-    if ((t = e.target.closest("[data-say]"))) { say(+t.closest(".sentence-card").dataset.sid); return; }
+    if ((t = e.target.closest("[data-say]"))) { if (Date.now() > sayHoldGuard) say(+t.closest(".sentence-card").dataset.sid); return; }
     if ((t = e.target.closest("[data-syn]"))) {
       synOn = !synOn;
       save("duo.syn", synOn ? "1" : "0");
@@ -2007,6 +2080,161 @@
   $detail.addEventListener("pointerup", endScrub);
   $detail.addEventListener("pointercancel", endScrub);
 
+  // ---------- hold the speaker: a liquid dial. Up ×1.2, down ×0.8, left "together with music" ----------
+  // The page dims and blurs, the speaker lifts off, and three drops ooze out of it. The lifted drop follows the finger on a
+  // spring and melts into whichever drop it reaches; letting go there chooses it, letting go near the middle changes nothing.
+  var SAY_HOLD = 340, SAY_R = 86, sayHold = null, sayHoldGuard = 0;
+  var SAY_OPTS = {
+    up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }
+  };
+  function sayGoo() {
+    if (document.getElementById("say-goo")) return;
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden");
+    // blur the drops together, then cut the blur back to a hard edge: where two drops come close they bridge like liquid
+    svg.innerHTML = '<filter id="say-goo" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">' +
+      '<feGaussianBlur in="SourceGraphic" stdDeviation="10" result="b"/>' +
+      '<feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -10" result="g"/>' +
+      '<feComposite in="SourceGraphic" in2="g" operator="atop"/></filter>';
+    document.body.appendChild(svg);
+  }
+  function sayOptText(o, hot) {
+    if (o === "left") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>' +
+      "<small>" + (hot ? (sayMix ? "オフにする" : "音楽と一緒に") : (sayMix ? "音楽と一緒 ON" : "音楽と一緒に")) + "</small>";
+    var r = o === "up" ? 1.2 : 0.8;
+    return "<b>×" + r + "</b><small>" + (hot && sayRate === r ? "×1 に戻す" : o === "up" ? "速く" : "ゆっくり") + "</small>";
+  }
+  function sayDialHint(pick) {
+    if (!pick) return "上 ×1.2　下 ×0.8　左 音楽と一緒に";
+    if (pick === "left") return sayMix ? "音楽を止めて再生に戻す" : "音楽を流したまま、少し下げて再生";
+    var r = pick === "up" ? 1.2 : 0.8;
+    return sayRate === r ? "ふつうの速さ（×1）に戻す" : "×" + r + " で再生（声の高さはそのまま）";
+  }
+  function openSayDial() {
+    var h = sayHold;
+    if (!h) return;
+    sayGoo();
+    var r = h.btn.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+    // keep the three drops on screen: the dial may sit a little away from the speaker, and the lifted drop glides there
+    var cx = Math.max(SAY_R + 44, Math.min(vw - 44, r.left + r.width / 2));
+    var cy = Math.max(SAY_R + 64, Math.min(vh - SAY_R - 64, r.top + r.height / 2));
+    var el = document.createElement("div");
+    el.className = "sayd";
+    el.style.setProperty("--cx", cx + "px");
+    el.style.setProperty("--cy", cy + "px");
+    el.style.setProperty("--r", SAY_R + "px");
+    var blobs = "", ui = "";
+    Object.keys(SAY_OPTS).forEach(function (o, i) {
+      var on = o === "left" ? sayMix : sayRate === (o === "up" ? 1.2 : 0.8);
+      blobs += '<i class="sayd-drop" data-o="' + o + '" style="--ox:' + SAY_OPTS[o].x + ";--oy:" + SAY_OPTS[o].y + ";--i:" + i + '"></i>';
+      ui += '<span class="sayd-opt' + (on ? " on" : "") + '" data-o="' + o + '" style="--ox:' + SAY_OPTS[o].x + ";--oy:" + SAY_OPTS[o].y + ";--i:" + i + '">' + sayOptText(o, false) + "</span>";
+    });
+    el.innerHTML = '<div class="sayd-veil"></div>' +
+      '<div class="sayd-stage"><div class="sayd-goo">' + blobs + '<i class="sayd-drop knob"></i></div>' +
+      '<div class="sayd-ui">' + ui + '<span class="sayd-knob">' + ICON.say + "</span></div></div>" +
+      '<p class="sayd-hint">' + sayDialHint(null) + "</p>";
+    document.body.appendChild(el);
+    h.btn.classList.add("held");
+    // the drop starts where the speaker is and glides to the dial's middle
+    var d = { el: el, cx: cx, cy: cy, px: r.left + r.width / 2 - cx, py: r.top + r.height / 2 - cy, vx: 0, vy: 0, pick: null, raf: 0, closing: false,
+      knob: el.querySelector(".sayd-drop.knob"), knobUi: el.querySelector(".sayd-knob"), hint: el.querySelector(".sayd-hint") };
+    h.dial = d;
+    void el.offsetWidth;
+    el.classList.add("open");
+    sayDialFrame();
+  }
+  // a spring pulls the drop toward the finger; past the ring it only gives a little, like stretched rubber
+  function sayDialFrame() {
+    var h = sayHold, d = h && h.dial;
+    if (!d || d.closing) return;
+    var mx = h.fx - h.x0, my = h.fy - h.y0, len = Math.hypot(mx, my);
+    var reach = len <= SAY_R ? len : SAY_R + (len - SAY_R) * .22, tx = len ? mx / len * reach : 0, ty = len ? my / len * reach : 0;
+    d.vx = (d.vx + (tx - d.px) * .2) * .7;
+    d.vy = (d.vy + (ty - d.py) * .2) * .7;
+    d.px += d.vx; d.py += d.vy;
+    var sp = Math.min(.32, Math.hypot(d.vx, d.vy) * .028), ang = Math.atan2(d.vy, d.vx) * 180 / Math.PI;
+    var tf = "translate(" + d.px.toFixed(1) + "px," + d.py.toFixed(1) + "px)";
+    d.knob.style.transform = tf + " rotate(" + ang.toFixed(1) + "deg) scale(" + (1 + sp).toFixed(3) + "," + (1 - sp * .55).toFixed(3) + ")";
+    d.knobUi.style.transform = tf;
+    // the speaker fades as the drop melts into a choice, so the choice's own label reads clearly
+    d.knobUi.style.opacity = Math.max(0, Math.min(1, 1 - (Math.hypot(d.px, d.py) - SAY_R * .3) / (SAY_R * .4))).toFixed(2);
+    var pick = null;
+    if (len > SAY_R * .42) {
+      if (Math.abs(my) >= Math.abs(mx)) pick = my < 0 ? "up" : "down";
+      else if (mx < 0) pick = "left";
+    }
+    if (pick !== d.pick) {
+      if (d.pick) {
+        d.el.querySelector('.sayd-drop[data-o="' + d.pick + '"]').classList.remove("hot");
+        var was = d.el.querySelector('.sayd-opt[data-o="' + d.pick + '"]');
+        was.classList.remove("hot"); was.innerHTML = sayOptText(d.pick, false);
+      }
+      if (pick) {
+        d.el.querySelector('.sayd-drop[data-o="' + pick + '"]').classList.add("hot");
+        var now = d.el.querySelector('.sayd-opt[data-o="' + pick + '"]');
+        now.classList.add("hot"); now.innerHTML = sayOptText(pick, true);
+      }
+      d.el.classList.toggle("picking", !!pick);
+      d.hint.textContent = sayDialHint(pick);
+      d.pick = pick;
+    }
+    d.raf = requestAnimationFrame(sayDialFrame);
+  }
+  function closeSayDial(commit) {
+    var h = sayHold, d = h && h.dial;
+    sayHold = null;
+    if (!d) return;
+    d.closing = true;
+    cancelAnimationFrame(d.raf);
+    var pick = commit ? d.pick : null;
+    if (pick === "left") sayMix = !sayMix;
+    else if (pick) { var r = pick === "up" ? 1.2 : 0.8; sayRate = sayRate === r ? 1 : r; }
+    if (pick) { saveSayPref(); sayBadges(); }
+    // the chosen drop swallows the lifted one, then everything flows back into the speaker
+    if (pick) {
+      var o = SAY_OPTS[pick];
+      d.knob.style.transform = d.knobUi.style.transform = "translate(" + o.x * SAY_R + "px," + o.y * SAY_R + "px)";
+      d.el.querySelector('.sayd-opt[data-o="' + pick + '"]').classList.add("chosen");
+      d.el.querySelector('.sayd-drop[data-o="' + pick + '"]').classList.add("chosen");
+    }
+    d.el.classList.add(pick ? "done" : "cancel");
+    setTimeout(function () {
+      d.el.classList.remove("open");
+      d.knob.style.transform = d.knobUi.style.transform = d.knobUi.style.opacity = "";
+      h.btn.classList.remove("held");
+      if (pick) { h.btn.classList.remove("set"); void h.btn.offsetWidth; h.btn.classList.add("set"); }
+      setTimeout(function () { d.el.remove(); }, 460);
+    }, pick ? 200 : 0);
+  }
+  $detail.addEventListener("pointerdown", function (e) {
+    var btn = e.target.closest("[data-say]");
+    if (!btn || sayHold || (e.pointerType === "mouse" && e.button !== 0)) return;
+    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+    sayHold = { btn: btn, id: e.pointerId, x0: e.clientX, y0: e.clientY, fx: e.clientX, fy: e.clientY, dial: null };
+    sayHold.timer = setTimeout(openSayDial, SAY_HOLD);
+  });
+  $detail.addEventListener("pointermove", function (e) {
+    var h = sayHold;
+    if (!h || e.pointerId !== h.id) return;
+    h.fx = e.clientX; h.fy = e.clientY;
+    if (h.dial) { e.preventDefault(); return; }
+    // the finger moved off before the dial came up: this was not a hold
+    if (Math.hypot(h.fx - h.x0, h.fy - h.y0) > 14) { clearTimeout(h.timer); sayHold = null; }
+  });
+  function endSayHold(e) {
+    var h = sayHold;
+    if (!h || e.pointerId !== h.id) return;
+    clearTimeout(h.timer);
+    if (!h.dial) { sayHold = null; return; }
+    sayHoldGuard = Date.now() + 450; // the lift that closes the dial is not a tap on the speaker
+    closeSayDial(e.type === "pointerup");
+  }
+  $detail.addEventListener("pointerup", endSayHold);
+  $detail.addEventListener("pointercancel", endSayHold);
+  $detail.addEventListener("contextmenu", function (e) { if (e.target.closest("[data-say]")) e.preventDefault(); });
+  document.addEventListener("visibilitychange", function () { if (document.hidden && sayHold) { clearTimeout(sayHold.timer); closeSayDial(false); } });
+
   // ---------- swipe left / right: next / previous sentence ----------
   var swipe = null;
   function swipeTarget(dx) {
@@ -2017,7 +2245,7 @@
     swipe = null;
     if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
     // the dock swipes like the rest of the page; only while a hidden sentence is being rubbed clear does it keep the finger
-    if (e.target.closest(".rail, pre, input, .seek, .gauge, .tint, .dock.reveal")) return;
+    if (e.target.closest(".rail, pre, input, .seek, .gauge, .tint, .dock.reveal, .say-btn")) return;
     if ($detail.querySelector(".gauge.open, .tint.open")) return;
     var t = e.touches[0];
     swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };

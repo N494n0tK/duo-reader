@@ -565,6 +565,79 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 @keyframes say-load { 0%, 100% { opacity: .2; } 50% { opacity: .7; } }
 .say-msg { margin: 10px 0 0; font-size: 13px; line-height: 1.6; color: var(--fix); }
 .say-msg:empty { display: none; }
+/* held down, the speaker opens the voice dial; its tags say what it will do: ×1.2 / ×0.8, and ♪ when the music plays on */
+.say-btn { position: relative; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.say-btn.held { opacity: 0; transform: scale(.55); }
+.say-btn.set { animation: say-set .55s var(--spring); }
+@keyframes say-set { from { transform: scale(.62); } }
+.say-btn[data-rate]::after {
+  content: "×" attr(data-rate); position: absolute; right: -8px; bottom: -6px; padding: 2px 4px 2px 3px; border-radius: 999px;
+  font: 700 9px/1 var(--mono); color: #141726; background: var(--marker); box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+}
+.say-btn.mix::before {
+  content: "♪"; position: absolute; left: -6px; top: -6px; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%;
+  font: 700 10px/1 var(--sans); color: #0b0d14; background: var(--tech); box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+}
+
+/* the voice dial: the page sinks into a dark blur; drops of liquid ooze out of the speaker and melt into the one you drag */
+.sayd { position: fixed; inset: 0; z-index: 60; pointer-events: none; --drop: color-mix(in srgb, var(--bg) 76%, var(--text) 24%); }
+.sayd-veil {
+  position: absolute; inset: 0; opacity: 0;
+  background: rgba(5, 7, 13, .5);
+  -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%);
+  transition: opacity .38s var(--ease);
+}
+.sayd.open .sayd-veil { opacity: 1; }
+.sayd-stage { position: absolute; left: var(--cx); top: var(--cy); width: 0; height: 0; }
+.sayd-goo, .sayd-ui {
+  position: absolute; left: calc(var(--r) * -1 - 80px); top: calc(var(--r) * -1 - 80px);
+  width: calc(var(--r) * 2 + 160px); height: calc(var(--r) * 2 + 160px);
+}
+.sayd-goo { filter: url(#say-goo); }
+.sayd-drop, .sayd-opt, .sayd-knob {
+  position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%;
+}
+.sayd-drop { background: var(--drop); transition: background-color .25s var(--ease); }
+.sayd-drop[data-o], .sayd-opt {
+  translate: 0 0; scale: .2;
+  transition: translate .42s var(--ease), scale .4s var(--ease), background-color .25s var(--ease), color .2s, opacity .25s var(--ease);
+}
+.sayd.open .sayd-drop[data-o], .sayd.open .sayd-opt {
+  translate: calc(var(--ox) * var(--r)) calc(var(--oy) * var(--r)); scale: 1;
+  transition: translate .7s var(--spring) calc(var(--i) * 55ms + 30ms), scale .55s var(--spring) calc(var(--i) * 55ms + 30ms),
+    background-color .25s var(--ease), color .2s, opacity .3s var(--ease) calc(var(--i) * 55ms + 120ms);
+}
+.sayd.open .sayd-drop.hot, .sayd.open .sayd-opt.hot { scale: 1.2; transition-delay: 0s; }
+.sayd .sayd-drop.hot { background: var(--marker); }
+.sayd.open.picking .sayd-drop[data-o]:not(.hot), .sayd.open.picking .sayd-opt:not(.hot) { scale: .9; transition-delay: 0s; }
+.sayd.open .sayd-drop.chosen, .sayd.open .sayd-opt.chosen { scale: 1.42; transition: scale .3s var(--spring); }
+.sayd-drop.knob { width: 66px; height: 66px; margin: -33px 0 0 -33px; background: var(--marker); scale: .55; transition: scale .5s var(--spring); }
+.sayd.open .sayd-drop.knob { scale: 1; }
+.sayd.done .sayd-drop.knob, .sayd.cancel .sayd-drop.knob, .sayd.done .sayd-knob, .sayd.cancel .sayd-knob { transition: transform .4s var(--spring), scale .4s var(--ease), opacity .3s; }
+.sayd-opt {
+  display: grid; place-content: center; justify-items: center; gap: 2px; text-align: center; opacity: 0;
+  color: var(--text); font: 400 10px/1.15 var(--sans);
+}
+.sayd.open .sayd-opt { opacity: 1; }
+.sayd-opt b { font: 700 16px/1 var(--mono); letter-spacing: -.02em; }
+.sayd-opt small { font-size: 8.5px; white-space: nowrap; opacity: .82; }
+.sayd-opt svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.sayd-opt.on { box-shadow: 0 0 0 2px var(--tech); }
+.sayd-opt.hot { color: #141726; }
+.sayd-knob { width: 66px; height: 66px; margin: -33px 0 0 -33px; display: grid; place-items: center; color: #141726; scale: .55; opacity: 0; transition: scale .5s var(--spring), opacity .2s; }
+.sayd.open .sayd-knob { scale: 1; opacity: 1; }
+.sayd-knob svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.sayd-knob .spk { fill: currentColor; stroke-width: 1.4; }
+.sayd-hint {
+  position: absolute; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom)); margin: 0; translate: -50% 12px;
+  padding: 9px 16px; border-radius: 999px; white-space: nowrap; opacity: 0;
+  font: 500 13px/1.2 var(--sans); color: #eef0f7; background: rgba(255, 255, 255, .1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14);
+  transition: opacity .3s var(--ease), translate .5s var(--spring);
+}
+.sayd.open .sayd-hint { opacity: 1; translate: -50% 0; }
+@media (prefers-reduced-motion: reduce) {
+  .sayd *, .say-btn.set { transition-duration: .01s !important; transition-delay: 0s !important; animation: none !important; }
+}
 [data-r="S"] { --role: var(--tech); }
 [data-r="V"] { --role: var(--marker); }
 [data-r="O"] { --role: var(--fix); }
