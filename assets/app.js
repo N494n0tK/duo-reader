@@ -415,7 +415,7 @@
   }
   // color the words of the sentence by their part (S / V / O / C / M); the first word of each chunk carries its letter.
   // The lines are not there at once: a pen draws them left to right, chunk after chunk, after the highlighter has gone by.
-  var SYN_PEN = 7, SYN_GAP = 35; // ms per letter, pause between chunks
+  var SYN_PEN = 11, SYN_GAP = 50; // ms per letter, pause between chunks
   function sameLine(a, b) { return Math.abs(a.getBoundingClientRect().bottom - b.getBoundingClientRect().bottom) < 4; }
   function paintSyntax(sid, parts) {
     var card = $detail.querySelector('.sentence-card[data-sid="' + sid + '"]');
@@ -463,7 +463,7 @@
       if (join) w.el.dataset.join = "";
       var len = same ? next.at - w.at : w.len;
       s.setProperty("--sd", Math.round(t) + "ms");
-      s.setProperty("--sl", Math.round(Math.max(30, len * SYN_PEN)) + "ms");
+      s.setProperty("--sl", Math.round(Math.max(45, len * SYN_PEN)) + "ms");
       t += len * SYN_PEN;
     });
     card.dataset.synT = Math.round(t);
