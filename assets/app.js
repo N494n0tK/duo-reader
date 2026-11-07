@@ -457,9 +457,8 @@
   }
 
   // ---------- the CD's voice: the private repository duo-audio, read with the same key as the explanations ----------
-  // index.json lists each track's stretches of speech (with what speech recognition heard in them). Which stretch is
-  // which sentence is worked out here, against the sentences on this device; a track is fetched the first time one
-  // of its sentences is played and kept, so it plays offline after that.
+  // index.json lists each track's stretches of speech (with what speech recognition heard in them) and which stretch is
+  // which sentence; a track is fetched the first time one of its sentences is played and kept, so it plays offline after that.
   var AUDIO_URL = "https://api.github.com/repos/N494n0tK/duo-audio/contents/";
   var audioDb = null;
   function audioStore(mode, fn) {
@@ -549,8 +548,8 @@
     }).then(function (rec) {
       var idx = JSON.parse(rec.body), key = rec.etag + "/" + SENTENCES.length, kept = loadJson("duo.audioMap", {});
       if (kept.key === key && Array.isArray(kept.map)) return { idx: idx, map: kept.map };
-      var r = alignAudio(idx, SENTENCES.map(function (x) { return x.en; }));
-      var map = r.score > .5 ? r.map : idx.guess;
+      // index.json carries the map already checked against the sentences; if the sentences on this device differ, work it out again
+      var map = Array.isArray(idx.map) && idx.map.length === SENTENCES.length ? idx.map : alignAudio(idx, SENTENCES.map(function (x) { return x.en; })).map;
       save("duo.audioMap", JSON.stringify({ key: key, map: map }));
       return { idx: idx, map: map };
     });
