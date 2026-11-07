@@ -229,6 +229,11 @@
     var r = String(role || "").trim();
     return /^[SVOCM]/i.test(r) ? r.charAt(0).toUpperCase() : "X";
   }
+  // a part inside a clause is written S′ V′ O′ …, inside a clause inside that S″ …, as in Japanese grammar books
+  function roleTag(role, depth) {
+    var r = String(role || "").trim();
+    return r === "接続" || !depth ? r : r + (depth === 1 ? "\u2032" : "\u2033");
+  }
 
   function exampleHtml(x) {
     if (!x || !x.en) return "";
@@ -313,11 +318,19 @@
     var words = list(n.words);
     var html = n.gist ? '<p class="nt-gist">' + mdInline(n.gist) + "</p>" : "";
     var parts = list(n.structure);
+    // a clause (that / when / what / who … with its own S and V) opens up: its own parts sit inside it as S′ V′ …
+    function chunkHtml(x, i, depth) {
+      var inner = list(x.parts), name = ROLE_NAMES[x.role] || x.role;
+      return '<span class="nt-chunk' + (inner.length ? " nt-group" : "") + '" data-role="' + roleKey(x.role) + '" style="--i:' + i + '">' +
+        '<b title="' + esc(depth ? "節の中の" + name : name) + '">' + esc(roleTag(x.role, depth)) + "</b>" +
+        (inner.length
+          ? (x.clause ? '<em class="nt-kind">' + esc(x.clause) + "</em>" : '<span lang="en">' + esc(x.text) + "</span>") +
+            '<span class="nt-inner">' + inner.map(function (y, j) { return chunkHtml(y, j, depth + 1); }).join("") + "</span>"
+          : '<span lang="en">' + esc(x.text) + "</span>") +
+        (x.note ? "<small>" + esc(x.note) + "</small>" : "") + "</span>";
+    }
     if (parts.length) {
-      html += '<div class="nt-struct">' + parts.map(function (x, i) {
-        return '<span class="nt-chunk" data-role="' + roleKey(x.role) + '" style="--i:' + i + '"><b title="' + esc(ROLE_NAMES[x.role] || x.role) + '">' + esc(x.role) + '</b><span lang="en">' + esc(x.text) + "</span>" +
-          (x.note ? "<small>" + esc(x.note) + "</small>" : "") + "</span>";
-      }).join("") + "</div>";
+      html += '<div class="nt-struct">' + parts.map(function (x, i) { return chunkHtml(x, i, 0); }).join("") + "</div>";
     }
     var points = list(n.grammar);
     if (points.length) {
@@ -366,7 +379,8 @@
     if (notesKey) html += '<button type="button" class="note-rekey" data-note-rekey>合鍵を入れ直す</button>';
     card.querySelector(".note-body").innerHTML = html;
   }
-  // where each chunk of the skeleton sits in the sentence: [start, end, role], in the order written, whole words only
+  // where each chunk of the skeleton sits in the sentence, in the order written, whole words only:
+  // leaves [start, end, role, depth] are the colored words; groups [start, end, role, depth, kind] are clauses opened into parts
   function syntaxRanges(en, parts) {
     var low = en.toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"'), cur = 0, out = [];
     function letter(c) { return !!c && /[a-z0-9]/i.test(c); }
@@ -381,9 +395,10 @@
     }
     // the note may spell out a contracted word: "is" for the 's of "it's", "not" for "n't"
     var SHORT = { is: ["'s"], has: ["'s"], are: ["'re"], am: ["'m"], have: ["'ve"], will: ["'ll"], would: ["'d"], had: ["'d"], not: ["n't"], us: ["'s"] };
-    parts.forEach(function (x) {
+    function locate(text) {
+      var segs = [];
       // "not only … but also": a chunk written in pieces
-      String(x.text || "").split(/\s*(?:\.{3}|\u2026|\u301c|~)\s*/).forEach(function (seg) {
+      String(text || "").split(/\s*(?:\.{3}|\u2026|\u301c|~)\s*/).forEach(function (seg) {
         var q = seg.trim().toLowerCase().replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"'), at = -1;
         if (!q) return;
         [q, q.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, "")].concat(SHORT[q] || []).some(function (t) {
@@ -394,11 +409,24 @@
           return at > -1;
         });
         if (at < 0) return;
-        out.push([at, at + q.length, x.role]);
+        segs.push([at, at + q.length]);
         cur = at + q.length;
       });
-    });
-    return out;
+      return segs;
+    }
+    var leaves = [], groups = [];
+    (function walk(items, depth) {
+      items.forEach(function (x) {
+        var inner = list(x.parts), segs = locate(x.text);
+        if (!inner.length) { segs.forEach(function (g) { leaves.push([g[0], g[1], x.role, depth]); }); return; }
+        // a clause: mark its whole stretch, then find its own parts inside it
+        var after = cur;
+        if (segs.length) { groups.push([segs[0][0], segs[segs.length - 1][1], x.role, depth, x.clause || ""]); cur = segs[0][0]; }
+        walk(inner, depth + 1);
+        cur = Math.max(after, cur);
+      });
+    })(parts, 0);
+    return { leaves: leaves, groups: groups };
   }
   // color the words of the sentence by their part (S / V / O / C / M); the first word of each chunk carries its letter.
   // The lines are not there at once: a pen draws them left to right, chunk after chunk, after the highlighter has gone by.
@@ -408,13 +436,15 @@
     var card = $detail.querySelector('.sentence-card[data-sid="' + sid + '"]');
     if (!card) return;
     var en = card.querySelector(".sentence-en"), btn = card.querySelector("[data-syn]");
-    var ranges = parts && parts.length ? syntaxRanges(SENTENCES[sid - 1].en, parts) : [];
-    var sig = JSON.stringify(ranges);
+    var found = parts && parts.length ? syntaxRanges(SENTENCES[sid - 1].en, parts) : { leaves: [], groups: [] };
+    var ranges = found.leaves, groups = found.groups;
+    var sig = JSON.stringify(found);
     btn.hidden = !ranges.length;
     // the saved note and the fresh one are usually the same: leave the lines alone instead of drawing them twice
     if (card.dataset.synSig === sig) { card.classList.toggle("syn", synOn && ranges.length > 0); return; }
     card.dataset.synSig = sig;
     card.classList.remove("syn");
+    Array.prototype.forEach.call(en.querySelectorAll(".syn-br"), function (b) { b.parentNode.removeChild(b); });
     Array.prototype.forEach.call(en.querySelectorAll(".wd[data-r]"), function (w) {
       delete w.dataset.r; delete w.dataset.tag; delete w.dataset.join;
       w.style.removeProperty("--sd"); w.style.removeProperty("--sl"); w.style.removeProperty("--tx");
@@ -428,17 +458,44 @@
     while ((n = walker.nextNode())) {
       var wd = n.parentNode.closest(".wd");
       if (wd && /\S/.test(n.nodeValue)) {
+        // a word that starts with a quotation mark ("You) belongs where its first letter is
+        var pos = at + Math.max(0, n.nodeValue.search(/[A-Za-z0-9]/));
         for (var k = 0; k < ranges.length; k++) {
-          if (at >= ranges[k][0] && at < ranges[k][1]) {
+          if (pos >= ranges[k][0] && pos < ranges[k][1]) {
             if (!wd.dataset.r) words.push({ el: wd, k: k, at: at, len: n.nodeValue.length });
             else words[words.length - 1].len += n.nodeValue.length; // a word split by a marker edge
             wd.dataset.r = roleKey(ranges[k][2]);
-            if (!tagged[k]) { tagged[k] = true; wd.dataset.tag = String(ranges[k][2]).trim(); }
+            if (!tagged[k]) { tagged[k] = true; wd.dataset.tag = roleTag(ranges[k][2], ranges[k][3]); }
             break;
           }
         }
       }
       at += n.nodeValue.length;
+    }
+    // a clause opened into its parts stands in brackets [ … ] of its own color, its letter (O, M …) under the opening one
+    var brackets = groups.map(function (g) {
+      var inside = words.filter(function (w) { return w.at < g[1] && w.at + w.len > g[0]; });
+      if (!inside.length) return null;
+      var open = document.createElement("i"), close = document.createElement("i");
+      open.className = "syn-br";
+      close.className = "syn-br end";
+      open.dataset.r = close.dataset.r = roleKey(g[2]);
+      open.dataset.tag = roleTag(g[2], g[3]);
+      if (g[4]) open.title = g[4];
+      var a = edge(inside[0].el, -1), b = edge(inside[inside.length - 1].el, 1);
+      a.parentNode.insertBefore(open, a);
+      b.parentNode.insertBefore(close, b.nextSibling);
+      return { open: open, close: close, first: inside[0], last: inside[inside.length - 1] };
+    }).filter(Boolean);
+    // the outermost element that starts (or ends) with this word, so a bracket goes outside the highlighter, not inside it
+    function edge(el, dir) {
+      while (el.parentNode !== en) {
+        var sib = dir < 0 ? el.previousSibling : el.nextSibling;
+        while (sib && (sib.nodeType === 3 ? !sib.nodeValue : sib.nodeName === "RT" || (sib.classList && sib.classList.contains("syn-br")))) sib = dir < 0 ? sib.previousSibling : sib.nextSibling;
+        if (sib) break;
+        el = el.parentNode;
+      }
+      return el;
     }
     // the pen's timing: each word starts where the last one left off; a new chunk waits a beat
     var t = 0, chunk = -1;
@@ -451,24 +508,38 @@
       var len = same ? next.at - w.at : w.len;
       s.setProperty("--sd", Math.round(t) + "ms");
       s.setProperty("--sl", Math.round(Math.max(45, len * SYN_PEN)) + "ms");
+      w.sd = t;
       t += len * SYN_PEN;
+      w.done = t;
     });
     card.dataset.synT = Math.round(t);
-    var lastEnd = -1, lastTop = null;
-    words.forEach(function (w) {
-      if (!w.el.dataset.tag) return;
-      var r = w.el.getBoundingClientRect(), shift = 0;
-      if (lastTop !== null && Math.abs(r.bottom - lastTop) < 4 && r.left < lastEnd + 3) shift = lastEnd + 3 - r.left;
-      if (shift) w.el.style.setProperty("--tx", Math.round(shift) + "px");
-      lastEnd = r.left + shift + 9 + 6 * w.el.dataset.tag.length;
-      lastTop = r.bottom;
+    brackets.forEach(function (b) {
+      b.open.style.setProperty("--sd", Math.round(b.first.sd) + "ms");
+      b.close.style.setProperty("--sd", Math.round(b.last.done) + "ms");
     });
+    nudgeTags(card);
     if (!synOn) return;
     // a sentence just opened: let the highlighter finish its words first. Moving between its words: lines already there.
     if (card.classList.contains("static")) {
       card.classList.add("syn-now", "syn");
       requestAnimationFrame(function () { requestAnimationFrame(function () { card.classList.remove("syn-now"); }); });
     } else drawSyntax(card, Math.max(0, 260 + en.querySelectorAll(".hl").length * 110 - (performance.now() - renderAt)));
+  }
+  // letters that would sit on each other are nudged apart, in reading order. A bracket's letter hangs to the left of the
+  // bracket, under the end of the word before, so it stays out of the way. Measured with the lines on: brackets take room only then.
+  function nudgeTags(card) {
+    var en = card.querySelector(".sentence-en"), lastEnd = -1, lastTop = null, on = card.classList.contains("syn");
+    if (!en) return;
+    if (!on) card.classList.add("syn-measure");
+    Array.prototype.forEach.call(en.querySelectorAll(".wd[data-tag]"), function (el) { el.style.removeProperty("--tx"); });
+    Array.prototype.forEach.call(en.querySelectorAll(".wd[data-tag]"), function (el) {
+      var r = el.getBoundingClientRect(), shift = 0, tag = el.dataset.tag;
+      if (lastTop !== null && Math.abs(r.bottom - lastTop) < 6 && r.left < lastEnd + 3) shift = lastEnd + 3 - r.left;
+      if (shift) el.style.setProperty("--tx", Math.round(shift) + "px");
+      lastEnd = r.left + shift + 9 + tag.replace(/[^\x00-\xff]/g, "").length * 6.5 + tag.replace(/[\x00-\xff]/g, "").length * 10;
+      lastTop = r.bottom;
+    });
+    if (!on) card.classList.remove("syn-measure");
   }
   // one written word, two parts of the sentence ("it's" = S It + V 's): cut the word where one chunk ends and the next begins,
   // so each piece takes its own color. Both pieces keep the word's number, so hiding and clearing still treat it as one word.

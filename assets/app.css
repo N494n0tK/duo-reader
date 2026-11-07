@@ -590,21 +590,33 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 }
 /* the pen lifts at the end of a chunk */
 .syn-in .sentence-en .wd[data-r]:not([data-join])::before { transition-timing-function: cubic-bezier(.25, .7, .35, 1), linear; }
-.sentence-en .wd[data-tag]::after {
+.sentence-en .wd[data-tag]::after, .sentence-en .syn-br[data-tag]::after {
   content: attr(data-tag); position: absolute; left: calc(var(--tx, 0px) - 1px); top: calc(100% + .36em);
   padding: 2px 4px; border-radius: 4px; background: color-mix(in srgb, var(--role) 15%, transparent);
   font: 700 9px/1 var(--mono); letter-spacing: .05em; color: var(--role); white-space: nowrap;
   pointer-events: none; opacity: 0; transform: translateY(-5px) scale(.7); transform-origin: left top; filter: blur(3px);
   transition: opacity .2s var(--ease), transform .25s var(--ease), filter .2s var(--ease);
 }
-.syn .sentence-en .wd[data-tag]::after { opacity: 1; transform: none; filter: none; }
-.syn-in .sentence-en .wd[data-tag]::after {
+.syn .sentence-en .wd[data-tag]::after, .syn .sentence-en .syn-br[data-tag]::after { opacity: 1; transform: none; filter: none; }
+.syn-in .sentence-en .wd[data-tag]::after, .syn-in .sentence-en .syn-br[data-tag]::after {
   transition: opacity .4s var(--ease) calc(var(--s0, 0ms) + var(--sd, 0ms) + 40ms),
     transform .55s var(--spring) calc(var(--s0, 0ms) + var(--sd, 0ms) + 40ms),
     filter .4s var(--ease) calc(var(--s0, 0ms) + var(--sd, 0ms) + 40ms);
 }
+/* a clause opened into its parts: thin brackets [ … ] of the clause's own color; they open as the pen arrives */
+.sentence-en .syn-br {
+  display: inline-block; position: relative; box-sizing: border-box; width: 0; height: 1.2em; margin: 0; vertical-align: -.24em;
+  border: 0 solid var(--role); border-width: 1.6px 0 1.6px 1.8px; border-radius: 5px 0 0 5px;
+  opacity: 0; pointer-events: none; transition: opacity .25s var(--ease);
+}
+.sentence-en .syn-br.end { border-width: 1.6px 1.8px 1.6px 0; border-radius: 0 5px 5px 0; }
+.syn .sentence-en .syn-br, .syn-measure .sentence-en .syn-br { width: .32em; margin: 0 .1em; }
+.syn .sentence-en .syn-br { opacity: .85; }
+.syn-in .sentence-en .syn-br { transition: opacity .3s var(--ease) calc(var(--s0, 0ms) + var(--sd, 0ms)); }
+.sentence-en .syn-br[data-tag]::after { left: auto; right: -1px; top: calc(100% + .14em); transform-origin: right top; }
 /* moving between the words of the same sentence: the lines are already there */
-.syn-now .sentence-en .wd, .syn-now .sentence-en .wd::before, .syn-now .sentence-en .wd::after { transition: none !important; }
+.syn-now .sentence-en .wd, .syn-now .sentence-en .wd::before, .syn-now .sentence-en .wd::after,
+.syn-now .sentence-en .syn-br, .syn-now .sentence-en .syn-br::after { transition: none !important; }
 .syn .sentence-en { line-height: 2.6; }
 .sentence-en { transition: line-height .35s var(--ease); }
 .static .hl { animation: none; --draw: 1; }
@@ -687,6 +699,12 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .nt-chunk[data-role="X"] { --role: var(--faint); }
 .nt-chunk > b { font: 600 11px var(--mono); color: var(--role); }
 .nt-chunk > span { font: 16.5px/1.4 var(--serif); }
+.nt-group { grid-template-columns: auto 1fr; }
+.nt-kind { font: 600 11px var(--sans); font-style: normal; color: var(--role); opacity: .85; }
+.nt-group > span[lang] { font-size: 15px; color: var(--muted); }
+.nt-inner { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.nt-inner .nt-chunk { padding: 5px 10px 6px; border-radius: 12px; animation: none; }
+.nt-inner .nt-chunk > span { font-size: 15px; }
 .nt-chunk > small { grid-column: 1 / -1; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
 .nt-points { display: grid; gap: 8px; }
 .nt-point { border-radius: 18px; background: var(--glass-flat); box-shadow: var(--glass-inset); }
