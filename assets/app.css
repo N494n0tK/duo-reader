@@ -568,6 +568,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 /* held down, the speaker opens the voice dial; its tags say what it will do: ×1.2 / ×0.8, and ♪ when the music plays on */
 .say-btn { position: relative; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .say-btn.held { opacity: 0; transform: scale(.55); }
+.say-holding, .say-holding * { -webkit-user-select: none !important; user-select: none !important; -webkit-touch-callout: none !important; }
 .say-btn.set { animation: say-set .55s var(--spring); }
 @keyframes say-set { from { transform: scale(.62); } }
 .say-btn[data-rate]::after {

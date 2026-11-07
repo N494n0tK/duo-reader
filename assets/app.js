@@ -733,7 +733,7 @@
     return p;
   }
 
-  var actx = null, playing = null;
+  var actx = null, actxKind = "", playing = null;
   // the sound is "running" only while the clock moves; after the phone slept, a call came in or the app was in the
   // background, iPhone leaves it "interrupted" or "suspended" and anything played on it is silent
   function wakeAudio(AC) {
@@ -777,8 +777,12 @@
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) { paintSay(sid, "", "このブラウザでは音声を鳴らせません。"); return; }
     // iPhone: play through the silent switch like a music app, and wake the audio while the finger is still on the button.
-    // With "together with music" on, the voice is a short announcement instead: the music keeps going and only dips under it.
-    try { if (navigator.audioSession) navigator.audioSession.type = sayMix ? "transient" : "playback"; } catch (e) {}
+    // With "together with music" on, the voice is "ambient": it mixes with the music instead of stopping it ("transient"
+    // still stopped it on iPhone), but then the silent switch mutes it too. The sound is set up again when the kind changes.
+    var kind = sayMix ? "ambient" : "playback";
+    try { if (navigator.audioSession) navigator.audioSession.type = kind; } catch (e) {}
+    if (actx && actxKind !== kind) { try { actx.close(); } catch (e) {} actx = null; }
+    actxKind = kind;
     wakeAudio(AC);
     var me = { sid: sid, src: null };
     playing = me;
@@ -2107,7 +2111,7 @@
   }
   function sayDialHint(pick) {
     if (!pick) return "上 ×1.2　下 ×0.8　左 音楽と一緒に";
-    if (pick === "left") return sayMix ? "音楽を止めて再生に戻す" : "音楽を流したまま、少し下げて再生";
+    if (pick === "left") return sayMix ? "音楽を止めて再生に戻す" : "音楽を流したまま再生（消音モードでは鳴りません）";
     var r = pick === "up" ? 1.2 : 0.8;
     return sayRate === r ? "ふつうの速さ（×1）に戻す" : "×" + r + " で再生（声の高さはそのまま）";
   }
@@ -2136,6 +2140,8 @@
       '<p class="sayd-hint">' + sayDialHint(null) + "</p>";
     document.body.appendChild(el);
     h.btn.classList.add("held");
+    document.documentElement.classList.add("say-holding");
+    try { window.getSelection().removeAllRanges(); } catch (err) {}
     // the drop starts where the speaker is and glides to the dial's middle
     var d = { el: el, cx: cx, cy: cy, px: r.left + r.width / 2 - cx, py: r.top + r.height / 2 - cy, vx: 0, vy: 0, pick: null, raf: 0, closing: false,
       knob: el.querySelector(".sayd-drop.knob"), knobUi: el.querySelector(".sayd-knob"), hint: el.querySelector(".sayd-hint") };
@@ -2203,6 +2209,7 @@
       d.el.classList.remove("open");
       d.knob.style.transform = d.knobUi.style.transform = d.knobUi.style.opacity = "";
       h.btn.classList.remove("held");
+      document.documentElement.classList.remove("say-holding");
       if (pick) { h.btn.classList.remove("set"); void h.btn.offsetWidth; h.btn.classList.add("set"); }
       setTimeout(function () { d.el.remove(); }, 460);
     }, pick ? 200 : 0);
@@ -2233,6 +2240,27 @@
   $detail.addEventListener("pointerup", endSayHold);
   $detail.addEventListener("pointercancel", endSayHold);
   $detail.addEventListener("contextmenu", function (e) { if (e.target.closest("[data-say]")) e.preventDefault(); });
+  // iPhone reads a held finger as "select the text here": the touch on the speaker is kept from it. That also keeps back
+  // the tap's click, so a short tap plays the voice here, on touchend (iPhone lets sound start from it).
+  var sayTouch = null;
+  $detail.addEventListener("touchstart", function (e) {
+    var btn = e.target.closest("[data-say]");
+    if (!btn || e.touches.length !== 1) { sayTouch = null; return; }
+    e.preventDefault();
+    sayTouch = { btn: btn, x: e.touches[0].clientX, y: e.touches[0].clientY, moved: false };
+  }, { passive: false });
+  $detail.addEventListener("touchmove", function (e) {
+    var t = sayTouch, f = e.touches[0];
+    if (t && f && Math.hypot(f.clientX - t.x, f.clientY - t.y) > 14) t.moved = true;
+  }, { passive: true });
+  $detail.addEventListener("touchend", function () {
+    var t = sayTouch;
+    sayTouch = null;
+    if (!t || t.moved || (sayHold && sayHold.dial) || Date.now() < sayHoldGuard) return;
+    sayHoldGuard = Date.now() + 450; // a click, if one still comes, is the same tap
+    say(+t.btn.closest(".sentence-card").dataset.sid);
+  });
+  $detail.addEventListener("touchcancel", function () { sayTouch = null; });
   document.addEventListener("visibilitychange", function () { if (document.hidden && sayHold) { clearTimeout(sayHold.timer); closeSayDial(false); } });
 
   // ---------- swipe left / right: next / previous sentence ----------
