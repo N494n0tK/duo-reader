@@ -431,6 +431,7 @@
   // color the words of the sentence by their part (S / V / O / C / M); the first word of each chunk carries its letter.
   // The lines are not there at once: a pen draws them left to right, chunk after chunk, after the highlighter has gone by.
   var SYN_PEN = 11, SYN_GAP = 50; // ms per letter, pause between chunks
+  var SYN_WAIT = 0.5; // the first line waits this share of the highlighter's run before the pen comes down
   function sameLine(a, b) { return Math.abs(a.getBoundingClientRect().bottom - b.getBoundingClientRect().bottom) < 4; }
   function paintSyntax(sid, parts) {
     var card = $detail.querySelector('.sentence-card[data-sid="' + sid + '"]');
@@ -519,11 +520,11 @@
     });
     nudgeTags(card);
     if (!synOn) return;
-    // a sentence just opened: let the highlighter finish its words first. Moving between its words: lines already there.
+    // a sentence just opened: let the highlighter get halfway through its words first. Moving between its words: lines already there.
     if (card.classList.contains("static")) {
       card.classList.add("syn-now", "syn");
       requestAnimationFrame(function () { requestAnimationFrame(function () { card.classList.remove("syn-now"); }); });
-    } else drawSyntax(card, Math.max(0, 260 + en.querySelectorAll(".hl").length * 110 - (performance.now() - renderAt)));
+    } else drawSyntax(card, Math.max(0, (260 + en.querySelectorAll(".hl").length * 110) * SYN_WAIT - (performance.now() - renderAt)));
   }
   // letters that would sit on each other are nudged apart, in reading order. A bracket's letter hangs to the left of the
   // bracket, under the end of the word before, so it stays out of the way. Measured with the lines on: brackets take room only then.
