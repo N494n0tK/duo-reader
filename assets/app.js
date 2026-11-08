@@ -826,7 +826,7 @@
     }).then(function (x) {
       if (playing !== me) return;
       var m = x[0], buf = x[1], clip = clipRange(m, buf), from = clip.from, to = clip.to;
-      var ctx = actx, src = ctx.createBufferSource(), t0 = ctx.currentTime;
+      var ctx = actx, src = ctx.createBufferSource();
       // another speed: the stretch keeps the voice at its own pitch, so faster does not mean higher
       var fast = sayRate !== 1 ? stretchedClip(ctx, buf, from, to, sayRate) : null;
       src.buffer = fast || buf;
@@ -840,7 +840,7 @@
       me.gain = gain;
       src.onended = function () { if (playing === me) { playing = null; setBarPos(sid, 0); paintSay(sid, ""); } };
       if (fast) { from = 0; to = fast.duration; }
-      var whole = to - from;
+      var whole = to - from, t0 = ctx.currentTime; // taken here, after the stretch: working that out can take a moment
       if (fast) src.start(0, startAt * whole);
       else src.start(0, from + startAt * whole, whole * (1 - startAt));
       // starting in the middle of a word: a very short fade instead of a click
@@ -939,10 +939,17 @@
     var bar = $detail.querySelector('.say-bar[data-sid="' + sid + '"]');
     if (bar && !barDrag) barHead(bar, f);
   }
+  // The clock counts what has been handed to the phone; the ear gets it a little later (more on wireless earphones).
+  // A phone that does not say how much later is taken to be on wireless earphones, the way this app is mostly heard.
+  var SAY_HEARD_LATE = .18;
+  function heardLate(ctx) {
+    var out = ctx.outputLatency;
+    return Math.min(.5, out > 0 ? out + (ctx.baseLatency || 0) : Math.max(ctx.baseLatency || 0, SAY_HEARD_LATE));
+  }
   function playFrac() {
     var p = playing;
     if (!p || !p.src || !actx) return null;
-    return Math.max(0, Math.min(1, p.f0 + (actx.currentTime - p.t0) / p.len));
+    return Math.max(0, Math.min(1, p.f0 + Math.max(0, actx.currentTime - p.t0 - heardLate(actx)) / p.len));
   }
   function barTick() {
     barRaf = 0;
