@@ -149,7 +149,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   border-radius: 30px;
   overflow: hidden;
 }
-.pane-detail { overflow-y: auto; outline: none; }
+.pane-detail { overflow-y: auto; outline: none; scrollbar-width: none; }
+.pane-detail::-webkit-scrollbar { display: none; }
 
 /* ===== Masthead ===== */
 .masthead { display: flex; align-items: center; justify-content: space-between; padding: calc(16px + env(safe-area-inset-top)) 18px 8px 22px; }
@@ -565,6 +566,79 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 @keyframes say-load { 0%, 100% { opacity: .2; } 50% { opacity: .7; } }
 .say-msg { margin: 10px 0 0; font-size: 13px; line-height: 1.6; color: var(--fix); }
 .say-msg:empty { display: none; }
+/* the waveform player: a glass bar of many thin bars; the part already heard is drawn in the highlighter's color */
+.say-bar {
+  position: sticky; bottom: 16px; z-index: 5; display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 10px 14px 10px 10px; height: 64px;
+  border-radius: 24px; background: var(--glass); background-color: color-mix(in srgb, var(--bg) 30%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(185%); backdrop-filter: blur(24px) saturate(185%);
+  box-shadow: var(--glass-inset), var(--glass-shadow);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.say-bar::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: linear-gradient(140deg, var(--glass-edge-a), var(--glass-edge-b) 32%, var(--glass-edge-b) 68%, var(--glass-edge-a));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: .8;
+}
+.say-bar.enter { animation: say-bar-in .62s var(--spring) both; }
+.say-bar.leaving { opacity: 0; transform: translateY(14px) scale(.92); pointer-events: none; transition: opacity .28s var(--ease), transform .34s var(--ease); }
+@keyframes say-bar-in { from { opacity: 0; transform: translateY(26px) scale(.86); } }
+.say-pp {
+  flex: none; position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  color: var(--marker); background: color-mix(in srgb, var(--marker) 16%, transparent); box-shadow: var(--glass-inset);
+  transition: transform .35s var(--spring);
+}
+.say-pp:active { transform: scale(.86); }
+.say-pp svg { grid-area: 1 / 1; width: 22px; height: 22px; fill: currentColor; transition: opacity .2s var(--ease), transform .4s var(--spring); }
+.say-pp .pp-pause { opacity: 0; transform: scale(.4); }
+.say-bar[data-state="play"] .pp-play, .say-bar[data-state="load"] .pp-play { opacity: 0; transform: scale(.4); }
+.say-bar[data-state="play"] .pp-pause, .say-bar[data-state="load"] .pp-pause { opacity: 1; transform: none; }
+.say-bar[data-state="load"] .say-pp svg { animation: say-load 1s ease-in-out infinite; }
+.say-wave { position: relative; flex: 1; min-width: 0; height: 44px; touch-action: none; cursor: pointer; --p: 0; }
+.say-bars { position: absolute; inset: 0; display: flex; align-items: center; gap: 1.5px; pointer-events: none; }
+.say-bars i { flex: 1; min-width: 0; height: calc(var(--bar-h, .08) * 100%); min-height: 3px; border-radius: 2px; background: var(--faint); transition: height .6s var(--spring); transition-delay: calc(var(--n) * 5ms); }
+.say-bars.fill { clip-path: inset(-2px calc(100% - var(--p) * 100%) -2px -2px); }
+.say-bars.fill i { background: var(--marker); }
+.say-bar.loading .say-bars:not(.fill) i { animation: say-bar-wait 1.15s ease-in-out infinite; animation-delay: calc(var(--n) * 18ms); }
+@keyframes say-bar-wait { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+.say-bar.failed .say-bars i { opacity: .45; }
+.say-head {
+  position: absolute; top: -3px; bottom: -3px; left: calc(var(--p) * 100%); width: 2px; margin-left: -1px; border-radius: 1px; pointer-events: none;
+  background: var(--text); opacity: 0; box-shadow: 0 0 8px var(--marker); transition: opacity .2s var(--ease), top .3s var(--spring), bottom .3s var(--spring);
+}
+.say-bar[data-state="play"] .say-head, .say-bar.drag .say-head { opacity: 1; }
+.say-bar.drag .say-head { top: -8px; bottom: -8px; }
+.say-tip {
+  position: absolute; bottom: calc(100% + 12px); left: clamp(26px, calc(var(--p) * 100%), calc(100% - 26px)); transform: translate(-50%, 6px); padding: 5px 9px; border-radius: 999px; pointer-events: none;
+  font: 12px/1 var(--mono); white-space: nowrap; color: #141726; background: var(--marker); opacity: 0; transition: opacity .18s var(--ease), transform .35s var(--spring);
+}
+.say-tip:empty { display: none; }
+.say-bar.drag .say-tip { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 860px) {
+  .say-bar { position: fixed; left: 14px; right: 14px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 6; margin: 0; }
+  .detail.has-bar { padding-bottom: calc(196px + env(safe-area-inset-bottom)); }
+}
+/* pull down past the top: a glass drop comes down, turns as it is pulled, and fills with color when letting go will reload */
+.ptr {
+  position: fixed; z-index: 45; left: 50%; top: calc(env(safe-area-inset-top) + 62px); display: flex; align-items: center; gap: 0; padding: 0; height: 44px; border-radius: 999px; pointer-events: none;
+  --t: 0; transform: translate(-50%, calc(var(--t) * 34px - 16px)) scale(calc(.5 + min(var(--t), 1) * .5)); opacity: min(1, calc(var(--t) * 1.6));
+  background: var(--glass); background-color: color-mix(in srgb, var(--bg) 40%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(185%); backdrop-filter: blur(24px) saturate(185%);
+  box-shadow: var(--glass-inset), var(--glass-shadow); color: var(--text);
+  transition: background-color .25s var(--ease), color .2s, gap .35s var(--spring), padding .35s var(--spring);
+}
+.ptr i { flex: none; display: grid; place-items: center; width: 44px; height: 44px; }
+.ptr svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transform: rotate(calc(var(--t) * 300deg)); }
+.ptr span { max-width: 0; overflow: hidden; white-space: nowrap; font: 600 13px/1 var(--sans); opacity: 0; transition: max-width .4s var(--spring), opacity .2s var(--ease); }
+.ptr.armed { background-color: var(--marker); color: #141726; padding-right: 16px; }
+.ptr.armed span { max-width: 140px; opacity: 1; }
+.ptr.back { opacity: 0; transform: translate(-50%, -22px) scale(.5); transition: opacity .25s var(--ease), transform .3s var(--ease); }
+.ptr.go svg { animation: ptr-spin .7s linear infinite; }
+@keyframes ptr-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .say-bar, .say-bars i, .say-pp svg, .say-head, .say-tip, .ptr, .ptr span { transition-duration: .01s !important; transition-delay: 0s !important; animation: none !important; }
+}
 /* held down, the speaker opens the voice dial; its tags say what it will do: ×1.2 / ×0.8, and ♪ when the music plays on */
 .say-btn { position: relative; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .say-btn.held { opacity: 0; transform: scale(.55); }
@@ -1423,6 +1497,7 @@ html.ios-app, html.ios-app body { height: var(--screen-h, 100vh); }
 html.ios-app .ambient, html.ios-app .pane-list, html.ios-app .pane-detail, html.ios-app .dial,
 html.ios-app .importer, html.ios-app .data-sheet { bottom: auto; height: var(--screen-h, 100vh); }
 html.ios-app .dock { bottom: auto; top: calc(var(--screen-h, 100vh) - 74px - env(safe-area-inset-bottom)); }
+html.ios-app .say-bar { bottom: auto; top: calc(var(--screen-h, 100vh) - 148px - env(safe-area-inset-bottom)); }
 
 /* opening straight into the sentence from last time: no slide */
 .no-anim .pane-detail, .no-anim .pane-list { transition: none !important; }

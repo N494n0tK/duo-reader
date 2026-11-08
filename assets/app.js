@@ -709,6 +709,22 @@
     audioMapP.catch(function () { audioMapP = null; }); // try again on the next tap
     return audioMapP;
   }
+  // A track is decoded on a sound that is awake, or else on one that never plays and is never closed: the waveform is
+  // drawn before any sound has been allowed, and a sleeping sound is replaced (and closed) at the next tap.
+  var offlineDec = null;
+  function decoder() {
+    if (actx && actx.state === "running") return actx;
+    var OC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!OC) return actx;
+    if (!offlineDec) offlineDec = new OC(1, 1, 44100);
+    return offlineDec;
+  }
+  function decodeOn(ctx, buf) {
+    return new Promise(function (resolve, reject) {
+      var r = ctx.decodeAudioData(buf.slice(0), resolve, reject);
+      if (r && r.then) r.then(resolve, reject);
+    });
+  }
   // a track, decoded; the last few are kept in memory
   var decoded = {}, decodedOrder = [];
   function audioTrack(idx, ti) {
@@ -721,9 +737,9 @@
         return got.body;
       });
     }).then(function (buf) {
-      return within(new Promise(function (resolve, reject) {
-        var r = actx.decodeAudioData(buf.slice(0), resolve, reject);
-        if (r && r.then) r.then(resolve, reject);
+      return within(decodeOn(decoder(), buf).catch(function (e) {
+        if (actx) return decodeOn(actx, buf);
+        throw e;
       }), 15000, "decode");
     });
     decoded[ti] = p;
@@ -762,17 +778,33 @@
     var btn = card.querySelector("[data-say]"), out = card.querySelector(".say-msg");
     if (btn) { btn.dataset.state = state || ""; btn.setAttribute("aria-pressed", state === "play" || state === "load"); }
     if (out) out.textContent = msg || "";
+    var bar = $detail.querySelector('.say-bar[data-sid="' + sid + '"]');
+    if (bar) bar.dataset.state = state || "";
+    if (state === "play") startBarTick();
   }
-  function sayStop() {
+  // keep: the waveform player's playhead stays where it is (a pause, or a jump to another place)
+  function sayStop(keep) {
     if (!playing) return;
     var p = playing;
     playing = null;
     try { if (p.src) p.src.stop(); } catch (e) {}
+    if (!keep) setBarPos(p.sid, 0);
     paintSay(p.sid, "");
   }
-  function say(sid) {
-    if (playing && playing.sid === sid) { sayStop(); return; }
-    sayStop();
+  function clipRange(m, buf) { return { from: Math.max(0, m[1] - .12), to: Math.min(buf.duration, m[2] + .3) }; }
+  function sayErrText(err) {
+    return err.message === "key" ? "合鍵で duo-audio を読めません。GitHub のトークンの設定で、読めるリポジトリに duo-audio を足してください。"
+      : err.message === "none" ? "この例文の音声が見つかりませんでした。"
+      : err.message === "net" ? "音声を読めませんでした（時間切れか圏外）。電波のあるところでもう一度タップしてください。"
+      : err.message === "mute" ? "音が出ませんでした。もう一度タップしてください。"
+      : "音声を鳴らせませんでした。";
+  }
+  // at: where to start, 0–1 of the sentence (the waveform player). Without it the speaker's tap: plays from the start, or stops.
+  function say(sid, at) {
+    if (at == null && playing && playing.sid === sid) { sayStop(); return; }
+    sayStop(at != null);
+    var startAt = at > 0 ? Math.min(at, .995) : 0;
+    if (at != null) setBarPos(sid, startAt);
     if (!notesKey) { paintSay(sid, "", "音声を聞くには、解説と同じ GitHub の合鍵が要ります（下の解説から入れられます）。"); return; }
     var AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) { paintSay(sid, "", "このブラウザでは音声を鳴らせません。"); return; }
@@ -793,7 +825,7 @@
       return audioTrack(a.idx, m[0]).then(function (buf) { return audioRunning().then(function () { return [m, buf]; }); });
     }).then(function (x) {
       if (playing !== me) return;
-      var m = x[0], buf = x[1], from = Math.max(0, m[1] - .12), to = Math.min(buf.duration, m[2] + .3);
+      var m = x[0], buf = x[1], clip = clipRange(m, buf), from = clip.from, to = clip.to;
       var ctx = actx, src = ctx.createBufferSource(), t0 = ctx.currentTime;
       // another speed: the stretch keeps the voice at its own pitch, so faster does not mean higher
       var fast = sayRate !== 1 ? stretchedClip(ctx, buf, from, to, sayRate) : null;
@@ -806,9 +838,14 @@
       gain.connect(lim);
       lim.connect(ctx.destination);
       me.gain = gain;
-      src.onended = function () { if (playing === me) { playing = null; paintSay(sid, ""); } };
-      if (fast) { src.start(0); from = 0; to = fast.duration; }
-      else src.start(0, from, to - from);
+      src.onended = function () { if (playing === me) { playing = null; setBarPos(sid, 0); paintSay(sid, ""); } };
+      if (fast) { from = 0; to = fast.duration; }
+      var whole = to - from;
+      if (fast) src.start(0, startAt * whole);
+      else src.start(0, from + startAt * whole, whole * (1 - startAt));
+      // starting in the middle of a word: a very short fade instead of a click
+      if (startAt) { try { gain.gain.setValueAtTime(0, t0); gain.gain.linearRampToValueAtTime(sayVol, t0 + .015); } catch (e) {} }
+      me.t0 = t0; me.f0 = startAt; me.len = whole;
       me.src = src;
       paintSay(sid, "play");
       // if the clock does not move, nothing is heard: say so instead of showing the waves forever
@@ -819,20 +856,21 @@
           paintSay(sid, "", "音が出ませんでした。もう一度タップしてください。");
         }
       }, 900);
-      setTimeout(function () { if (playing === me) sayStop(); }, (to - from + 1.5) * 1000);
+      setTimeout(function () { if (playing === me) sayStop(); }, (whole * (1 - startAt) + 1.5) * 1000);
     }).catch(function (err) {
       if (playing !== me) return;
       playing = null;
       if (err.message === "mute") actx = null;
-      paintSay(sid, "", err.message === "key" ? "合鍵で duo-audio を読めません。GitHub のトークンの設定で、読めるリポジトリに duo-audio を足してください。"
-        : err.message === "none" ? "この例文の音声が見つかりませんでした。"
-        : err.message === "net" ? "音声を読めませんでした（時間切れか圏外）。電波のあるところでもう一度タップしてください。"
-        : err.message === "mute" ? "音が出ませんでした。もう一度タップしてください。"
-        : "音声を鳴らせませんでした。");
+      paintSay(sid, "", sayErrText(err));
     });
   }
 
-  document.addEventListener("visibilitychange", function () { if (document.hidden) sayStop(); });
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) return;
+    sayStop();
+    // iPhone can bring a sound back from the background looking awake but silent: the next tap starts with a new one
+    if (actx) { try { actx.close(); } catch (e) {} actx = null; }
+  });
 
   // ---------- how the voice plays: speed, volume and "together with music", chosen by holding the speaker ----------
   // speed ×0.6 – ×1.5 and volume 20 % – 150 %, both in steps of 0.1
@@ -846,7 +884,8 @@
   var sayRate = typeof sayPref.rate === "number" ? sayRound(sayStep(sayPref.rate, SAY_SCALES.up)) : 1;
   var sayVol = typeof sayPref.vol === "number" ? sayRound(sayStep(sayPref.vol, SAY_SCALES.down)) : 1;
   var sayMix = !!sayPref.mix;
-  function saveSayPref() { save("duo.say", JSON.stringify({ rate: sayRate, vol: sayVol, mix: sayMix })); }
+  var sayBarOn = !!sayPref.bar; // the waveform player: once shown it stays, on every sentence and after reopening the app
+  function saveSayPref() { save("duo.say", JSON.stringify({ rate: sayRate, vol: sayVol, mix: sayMix, bar: sayBarOn })); }
   // the speaker shows what it will do: the speed and the volume in tags when not the usual, a note when the music plays on
   function sayBadges() {
     Array.prototype.forEach.call(document.querySelectorAll("[data-say]"), function (b) {
@@ -859,6 +898,131 @@
       }
       b.classList.toggle("mix", sayMix);
     });
+  }
+
+  // ---------- the waveform player: many bars, one per moment of the sentence, loudest tallest. Touch one to play from there ----------
+  var SAY_BARS = 64, waves = {}, barPos = { sid: 0, f: 0 }, barRaf = 0, barDrag = null;
+  function wavePeaks(buf, from, to) {
+    var sr = buf.sampleRate, d = buf.getChannelData(0), s0 = Math.floor(from * sr), n = Math.max(SAY_BARS, Math.floor((to - from) * sr));
+    var per = n / SAY_BARS, stride = Math.max(1, Math.floor(per / 240)), out = [], top = 1e-6, i, k;
+    for (i = 0; i < SAY_BARS; i++) {
+      var a = s0 + Math.floor(i * per), b = Math.min(d.length, s0 + Math.floor((i + 1) * per)), sum = 0, c = 0;
+      for (k = a; k < b; k += stride) { sum += d[k] * d[k]; c++; }
+      var v = c ? Math.sqrt(sum / c) : 0;
+      out.push(v);
+      if (v > top) top = v;
+    }
+    return out.map(function (v) { return Math.max(.07, Math.pow(v / top, .72)); }); // quiet stretches stay visible
+  }
+  function waveFor(sid) {
+    if (waves[sid]) return Promise.resolve(waves[sid]);
+    return audioMap().then(function (a) {
+      var m = a.map[sid - 1];
+      if (!m) throw new Error("none");
+      return audioTrack(a.idx, m[0]).then(function (buf) {
+        var c = clipRange(m, buf);
+        return (waves[sid] = { bars: wavePeaks(buf, c.from, c.to), len: c.to - c.from });
+      });
+    });
+  }
+  function sayBarHtml(sid, enter) {
+    var bars = "";
+    for (var i = 0; i < SAY_BARS; i++) bars += '<i style="--n:' + i + '"></i>';
+    return '<div class="say-bar' + (enter ? " enter" : "") + '" data-sid="' + sid + '" role="group" aria-label="この例文の波形プレーヤー">' +
+      '<button type="button" class="say-pp" data-sayb aria-label="再生・一時停止">' + ICON.play + ICON.pause + "</button>" +
+      '<div class="say-wave" aria-label="押したところから再生"><div class="say-bars">' + bars + '</div><div class="say-bars fill" aria-hidden="true">' + bars + "</div>" +
+      '<i class="say-head" aria-hidden="true"></i><span class="say-tip" aria-hidden="true"></span></div></div>';
+  }
+  function barHead(bar, f) { bar.querySelector(".say-wave").style.setProperty("--p", f.toFixed(4)); }
+  function setBarPos(sid, f) {
+    barPos = { sid: sid, f: f };
+    var bar = $detail.querySelector('.say-bar[data-sid="' + sid + '"]');
+    if (bar && !barDrag) barHead(bar, f);
+  }
+  function playFrac() {
+    var p = playing;
+    if (!p || !p.src || !actx) return null;
+    return Math.max(0, Math.min(1, p.f0 + (actx.currentTime - p.t0) / p.len));
+  }
+  function barTick() {
+    barRaf = 0;
+    var f = playFrac();
+    if (f === null) return;
+    var bar = $detail.querySelector('.say-bar[data-sid="' + playing.sid + '"]');
+    if (!bar) return;
+    if (!barDrag) barHead(bar, f);
+    barRaf = requestAnimationFrame(barTick);
+  }
+  function startBarTick() { if (!barRaf && sayBarOn) barRaf = requestAnimationFrame(barTick); }
+  function paintBarWave(bar, w) {
+    bar.classList.remove("loading", "failed");
+    Array.prototype.forEach.call(bar.querySelectorAll(".say-bars"), function (lay) {
+      Array.prototype.forEach.call(lay.children, function (b, i) { b.style.setProperty("--bar-h", w.bars[i].toFixed(3)); });
+    });
+  }
+  function showSayBar() {
+    var bar = $detail.querySelector(".say-bar:not(.leaving)");
+    if (!bar) return;
+    var sid = +bar.dataset.sid;
+    if (barPos.sid !== sid) barPos = { sid: sid, f: 0 };
+    var f = playing && playing.sid === sid ? playFrac() : null;
+    barHead(bar, f === null ? barPos.f : f);
+    bar.dataset.state = playing && playing.sid === sid ? (playing.src ? "play" : "load") : "";
+    if (f !== null) startBarTick();
+    if (waves[sid]) { paintBarWave(bar, waves[sid]); return; }
+    bar.classList.add("loading");
+    waveFor(sid).then(function (w) {
+      if (bar.isConnected) paintBarWave(bar, w);
+    }, function (err) {
+      if (!bar.isConnected) return;
+      bar.classList.remove("loading");
+      bar.classList.add("failed");
+      if (!playing) paintSay(sid, "", sayErrText(err));
+    });
+  }
+  // puts the player on the page or takes it off, to match the setting (enter: it was just turned on, so it rises into view)
+  function syncSayBar(enter) {
+    var art = $detail.querySelector(".detail"), old = $detail.querySelector(".say-bar:not(.leaving)"), on = sayBarOn && !!notesKey;
+    if (!art) return;
+    art.classList.toggle("has-bar", on);
+    if (on && !old) {
+      var dock = art.querySelector(".dock"), html = sayBarHtml(lastSid, enter);
+      if (dock) dock.insertAdjacentHTML("beforebegin", html); else art.insertAdjacentHTML("beforeend", html);
+      showSayBar();
+    } else if (!on && old) {
+      old.classList.add("leaving");
+      setTimeout(function () { old.remove(); }, 360);
+    }
+  }
+  function barToggle(sid) {
+    if (playing && playing.sid === sid) {
+      var f = playFrac();
+      sayStop(true);
+      if (f !== null) setBarPos(sid, f);
+      return;
+    }
+    say(sid, barPos.sid === sid ? barPos.f : 0);
+  }
+  function waveDown(wave, x, id) {
+    if (barDrag) return;
+    var bar = wave.closest(".say-bar");
+    barDrag = { bar: bar, wave: wave, sid: +bar.dataset.sid, id: id, f: 0 };
+    bar.classList.add("drag");
+    waveMove(x);
+  }
+  function waveMove(x) {
+    var d = barDrag, r = d.wave.getBoundingClientRect(), w = waves[d.sid];
+    d.f = Math.max(0, Math.min(1, (x - r.left) / r.width));
+    barHead(d.bar, d.f);
+    d.bar.querySelector(".say-tip").textContent = w ? (d.f * w.len / sayRate).toFixed(1) + " 秒" : "";
+  }
+  function waveUp(cancel) {
+    var d = barDrag;
+    barDrag = null;
+    if (!d) return;
+    d.bar.classList.remove("drag");
+    if (cancel || !d.bar.isConnected) { if (d.bar.isConnected) barHead(d.bar, barPos.f); return; }
+    say(d.sid, d.f >= .995 ? 0 : d.f); // let go at the very end: from the top again
   }
 
   // Time stretch (WSOLA): the clip is cut into overlapping 40 ms pieces, laid down at a new spacing, and each piece is
@@ -1152,6 +1316,8 @@
     next5: '<svg viewBox="0 0 24 24"><path d="M5 5l7 7-7 7M12 5l7 7-7 7"/></svg>',
     del: '<svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>',
     drop: '<svg viewBox="0 0 24 24"><path class="drop" d="M12 3.6c3.4 4.1 5.7 7.2 5.7 10.1a5.7 5.7 0 0 1-11.4 0c0-2.9 2.3-6 5.7-10.1Z"/></svg>',
+    play: '<svg class="pp-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.2 5.3c0-.8.9-1.3 1.6-.9l10 6.7c.6.4.6 1.3 0 1.8l-10 6.7c-.7.4-1.6-.1-1.6-.9z"/></svg>',
+    pause: '<svg class="pp-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="4.8" width="4" height="14.4" rx="1.4"/><rect x="13.5" y="4.8" width="4" height="14.4" rx="1.4"/></svg>',
     say: '<svg viewBox="0 0 24 24"><path class="spk" d="M4.5 9.5h3l4.5-4v13l-4.5-4h-3z"/><path class="w1" d="M15.5 9.2a4 4 0 0 1 0 5.6"/><path class="w2" d="M18.2 6.6a7.6 7.6 0 0 1 0 10.8"/></svg>',
     clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.8V12l2.8 1.8"/></svg>'
   };
@@ -1308,6 +1474,7 @@
     lastP = p;
     setupReveal(same);
     showNote();
+    if (!opts.home) syncSayBar(false);
     if (playing && playing.sid === sid) paintSay(sid, playing.src ? "play" : "load");
     sayBadges();
   }
@@ -1934,6 +2101,8 @@
       setTimeout(closePops, 260); // let the choice show before the drop closes
       return;
     }
+    if ((t = e.target.closest("[data-sayb]"))) { barToggle(+t.closest(".say-bar").dataset.sid); return; }
+    if (e.target.closest(".say-wave")) return;
     if ((t = e.target.closest("[data-say]"))) { if (Date.now() > sayHoldGuard) say(+t.closest(".sentence-card").dataset.sid); return; }
     if ((t = e.target.closest("[data-syn]"))) {
       synOn = !synOn;
@@ -2105,14 +2274,14 @@
   $detail.addEventListener("pointerup", endScrub);
   $detail.addEventListener("pointercancel", endScrub);
 
-  // ---------- hold the speaker: a liquid dial. Up: speed, down: volume, left: "together with music" ----------
+  // ---------- hold the speaker: a liquid dial. Up: speed, down: volume, left: "together with music", right: the waveform player ----------
   // The page dims and blurs, the speaker lifts off, and three drops ooze out of it. The lifted drop follows the finger on a
   // spring and melts into whichever drop it reaches; letting go near the middle changes nothing. Let go on speed or volume
   // and that drop swells into a slider in the middle of the screen (the speaker sits at the edge, where a finger has no room
   // to slide); let go on the note and the music setting flips.
   var SAY_HOLD = 340, SAY_R = 86, sayHold = null, sayHoldGuard = 0;
   var SAY_OPTS = {
-    up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }
+    up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 }
   };
   function sayGoo() {
     if (document.getElementById("say-goo")) return;
@@ -2129,11 +2298,14 @@
   function sayOptText(o, hot) {
     if (o === "left") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>' +
       "<small>" + (hot ? (sayMix ? "オフにする" : "音楽と一緒に") : (sayMix ? "音楽と一緒 ON" : "音楽と一緒に")) + "</small>";
+    if (o === "right") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 10.5v3"/></svg>' +
+      "<small>" + (hot ? (sayBarOn ? "閉じる" : "表示する") : "波形プレーヤー") + "</small>";
     var sc = SAY_SCALES[o];
     return "<b>" + sc.text(o === "up" ? sayRate : sayVol) + "</b><small>" + (hot ? "離して調整" : sc.label) + "</small>";
   }
   function sayDialHint(pick) {
-    if (!pick) return "上 速度　下 音量　左 音楽と一緒に";
+    if (!pick) return "上 速度　下 音量　左 音楽　右 波形";
+    if (pick === "right") return sayBarOn ? "波形プレーヤーをしまう" : "波形プレーヤーを出したままにする";
     if (pick === "left") return sayMix ? "音楽を止めて再生に戻す" : "音楽を流したまま再生（消音モードでは鳴りません）";
     return pick === "up" ? "離すと速度を選べます（声の高さはそのまま）" : "離すと声の音量を選べます";
   }
@@ -2143,7 +2315,7 @@
     sayGoo();
     var r = h.btn.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
     // keep the three drops on screen: the dial may sit a little away from the speaker, and the lifted drop glides there
-    var cx = Math.max(SAY_R + 44, Math.min(vw - 44, r.left + r.width / 2));
+    var cx = Math.max(SAY_R + 44, Math.min(vw - SAY_R - 44, r.left + r.width / 2));
     var cy = Math.max(SAY_R + 64, Math.min(vh - SAY_R - 64, r.top + r.height / 2));
     var el = document.createElement("div");
     el.className = "sayd";
@@ -2152,7 +2324,7 @@
     el.style.setProperty("--r", SAY_R + "px");
     var blobs = "", ui = "";
     Object.keys(SAY_OPTS).forEach(function (o, i) {
-      var on = o === "left" ? sayMix : o === "up" ? sayRate !== 1 : sayVol !== 1;
+      var on = o === "left" ? sayMix : o === "right" ? sayBarOn : o === "up" ? sayRate !== 1 : sayVol !== 1;
       blobs += '<i class="sayd-drop" data-o="' + o + '" style="--ox:' + SAY_OPTS[o].x + ";--oy:" + SAY_OPTS[o].y + ";--i:" + i + '"></i>';
       ui += '<span class="sayd-opt' + (on ? " on" : "") + '" data-o="' + o + '" style="--ox:' + SAY_OPTS[o].x + ";--oy:" + SAY_OPTS[o].y + ";--i:" + i + '">' + sayOptText(o, false) + "</span>";
     });
@@ -2176,7 +2348,10 @@
   function sayDialFrame() {
     var h = sayHold, d = h && h.dial;
     if (!d || d.closing) return;
-    var mx = h.fx - h.x0, my = h.fy - h.y0, len = Math.hypot(mx, my);
+    var mx = h.fx - h.x0, my = h.fy - h.y0;
+    // the speaker sits near the right edge, with little room for the finger: there a shorter slide reaches the right-hand drop
+    if (mx > 0) mx *= Math.max(1, Math.min(2.2, SAY_R * .9 / Math.max(1, window.innerWidth - 10 - h.x0)));
+    var len = Math.hypot(mx, my);
     var reach = len <= SAY_R ? len : SAY_R + (len - SAY_R) * .22, tx = len ? mx / len * reach : 0, ty = len ? my / len * reach : 0;
     d.vx = (d.vx + (tx - d.px) * .2) * .7;
     d.vy = (d.vy + (ty - d.py) * .2) * .7;
@@ -2190,7 +2365,7 @@
     var pick = null;
     if (len > SAY_R * .42) {
       if (Math.abs(my) >= Math.abs(mx)) pick = my < 0 ? "up" : "down";
-      else if (mx < 0) pick = "left";
+      else pick = mx < 0 ? "left" : "right";
     }
     if (pick !== d.pick) {
       if (d.pick) {
@@ -2217,6 +2392,7 @@
     cancelAnimationFrame(d.raf);
     var pick = commit ? d.pick : null;
     if (pick === "left") { sayMix = !sayMix; saveSayPref(); sayBadges(); }
+    else if (pick === "right") { sayBarOn = !sayBarOn; saveSayPref(); syncSayBar(true); }
     // speed / volume: the chosen drop swells into the slider panel
     else if (pick) openSayPanel(pick, d.cx + SAY_OPTS[pick].x * SAY_R, d.cy + SAY_OPTS[pick].y * SAY_R, +h.btn.closest(".sentence-card").dataset.sid);
     // the chosen drop swallows the lifted one, then everything flows back into the speaker
@@ -2232,7 +2408,7 @@
       d.knob.style.transform = d.knobUi.style.transform = d.knobUi.style.opacity = "";
       h.btn.classList.remove("held");
       if (!sayPanel) document.documentElement.classList.remove("say-holding");
-      if (pick === "left") { h.btn.classList.remove("set"); void h.btn.offsetWidth; h.btn.classList.add("set"); }
+      if (pick === "left" || pick === "right") { h.btn.classList.remove("set"); void h.btn.offsetWidth; h.btn.classList.add("set"); }
       setTimeout(function () { d.el.remove(); }, 460);
     }, pick ? 200 : 0);
   }
@@ -2386,6 +2562,82 @@
     closeSayPanel(true);
   });
 
+  // the waveform: touch or drag to a place, let go and it plays from there. On iPhone the sound may start from touchend, so
+  // fingers are read as touches here and only the mouse as pointer events.
+  $detail.addEventListener("touchstart", function (e) {
+    var wave = e.target.closest(".say-wave");
+    if (!wave || e.touches.length !== 1) return;
+    e.preventDefault();
+    waveDown(wave, e.touches[0].clientX, e.touches[0].identifier);
+  }, { passive: false });
+  function barTouch(e) {
+    if (!barDrag) return null;
+    for (var i = 0; i < e.changedTouches.length; i++) if (e.changedTouches[i].identifier === barDrag.id) return e.changedTouches[i];
+    return null;
+  }
+  $detail.addEventListener("touchmove", function (e) { var t = barTouch(e); if (t) waveMove(t.clientX); }, { passive: true });
+  $detail.addEventListener("touchend", function (e) { if (barTouch(e)) waveUp(false); });
+  $detail.addEventListener("touchcancel", function (e) { if (barTouch(e)) waveUp(true); });
+  $detail.addEventListener("pointerdown", function (e) {
+    var wave = e.target.closest(".say-wave");
+    if (!wave || e.pointerType !== "mouse" || e.button !== 0) return;
+    e.preventDefault();
+    try { wave.setPointerCapture(e.pointerId); } catch (err) {}
+    waveDown(wave, e.clientX, e.pointerId);
+  });
+  $detail.addEventListener("pointermove", function (e) { if (barDrag && barDrag.id === e.pointerId && e.pointerType === "mouse") waveMove(e.clientX); });
+  $detail.addEventListener("pointerup", function (e) { if (barDrag && barDrag.id === e.pointerId && e.pointerType === "mouse") waveUp(false); });
+  $detail.addEventListener("pointercancel", function (e) { if (barDrag && barDrag.id === e.pointerId && e.pointerType === "mouse") waveUp(true); });
+
+  // ---------- pull down past the top of the page: reload (a way back when the voice will not play) ----------
+  var PULL_START = 12, PULL_AT = 104, pull = null;
+  function pullPaint(d) {
+    var t = Math.min(1.25, d / PULL_AT), el = pull.el;
+    el.style.setProperty("--t", t.toFixed(3));
+    var armed = d >= PULL_AT;
+    if (armed !== pull.armed) { pull.armed = armed; el.classList.toggle("armed", armed); }
+  }
+  function pullEnd(commit) {
+    var p = pull;
+    pull = null;
+    if (!p || !p.el) return;
+    if (commit && p.armed) {
+      p.el.classList.add("go");
+      sayStop();
+      setTimeout(function () { location.reload(); }, 240);
+      return;
+    }
+    p.el.classList.add("back");
+    setTimeout(function () { p.el.remove(); }, 320);
+  }
+  $detail.addEventListener("touchstart", function (e) {
+    pullEnd(false);
+    if (e.touches.length !== 1 || $detail.scrollTop > 0) return;
+    if (e.target.closest(".rail, pre, input, .seek, .gauge, .tint, .dock, .say-bar, .say-btn")) return;
+    if ($detail.querySelector(".gauge.open, .tint.open")) return;
+    pull = { x: e.touches[0].clientX, y: e.touches[0].clientY, el: null, armed: false };
+  }, { passive: true });
+  $detail.addEventListener("touchmove", function (e) {
+    if (!pull) return;
+    if (e.touches.length !== 1) { pullEnd(false); return; }
+    var dx = e.touches[0].clientX - pull.x, dy = e.touches[0].clientY - pull.y;
+    if (!pull.el) {
+      // a sideways swipe or a scroll down the page is not a pull
+      if (dy < -6 || (Math.abs(dx) > 10 && Math.abs(dx) > dy)) { pull = null; return; }
+      if (dy < PULL_START) return;
+      var el = document.createElement("div");
+      el.className = "ptr";
+      el.setAttribute("aria-hidden", "true");
+      el.innerHTML = '<i><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.3-5.4"/><path d="M19.8 3.4v4.2h-4.2"/></svg></i><span>離すと再読み込み</span>';
+      document.body.appendChild(el);
+      pull.el = el;
+    }
+    if ($detail.scrollTop > 1) { pullEnd(false); return; }
+    pullPaint(Math.max(0, dy - PULL_START));
+  }, { passive: true });
+  $detail.addEventListener("touchend", function () { pullEnd(true); });
+  $detail.addEventListener("touchcancel", function () { pullEnd(false); });
+
   // ---------- swipe left / right: next / previous sentence ----------
   var swipe = null;
   function swipeTarget(dx) {
@@ -2396,7 +2648,7 @@
     swipe = null;
     if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
     // the dock swipes like the rest of the page; only while a hidden sentence is being rubbed clear does it keep the finger
-    if (e.target.closest(".rail, pre, input, .seek, .gauge, .tint, .dock.reveal, .say-btn")) return;
+    if (e.target.closest(".rail, pre, input, .seek, .gauge, .tint, .dock.reveal, .say-btn, .say-wave")) return;
     if ($detail.querySelector(".gauge.open, .tint.open")) return;
     var t = e.touches[0];
     swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };
