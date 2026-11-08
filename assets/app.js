@@ -795,10 +795,17 @@
       if (playing !== me) return;
       var m = x[0], buf = x[1], from = Math.max(0, m[1] - .12), to = Math.min(buf.duration, m[2] + .3);
       var ctx = actx, src = ctx.createBufferSource(), t0 = ctx.currentTime;
-      // ×1.2 / ×0.8: the stretch keeps the voice at its own pitch, so faster does not mean higher
+      // another speed: the stretch keeps the voice at its own pitch, so faster does not mean higher
       var fast = sayRate !== 1 ? stretchedClip(ctx, buf, from, to, sayRate) : null;
       src.buffer = fast || buf;
-      src.connect(ctx.destination);
+      // the voice's own volume; above 100% a limiter keeps the louder peaks from cracking
+      var gain = ctx.createGain(), lim = ctx.createDynamicsCompressor();
+      gain.gain.value = sayVol;
+      lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = .003; lim.release.value = .15;
+      src.connect(gain);
+      gain.connect(lim);
+      lim.connect(ctx.destination);
+      me.gain = gain;
       src.onended = function () { if (playing === me) { playing = null; paintSay(sid, ""); } };
       if (fast) { src.start(0); from = 0; to = fast.duration; }
       else src.start(0, from, to - from);
@@ -827,15 +834,29 @@
 
   document.addEventListener("visibilitychange", function () { if (document.hidden) sayStop(); });
 
-  // ---------- how the voice plays: speed (×0.8 / ×1 / ×1.2) and "together with music", chosen by holding the speaker ----------
-  var SAY_RATES = [0.8, 1, 1.2];
+  // ---------- how the voice plays: speed, volume and "together with music", chosen by holding the speaker ----------
+  // speed ×0.6 – ×1.5 and volume 20 % – 150 %, both in steps of 0.1
+  var SAY_SCALES = {
+    up: { min: .6, max: 1.5, step: .1, label: "速度", text: function (v) { return "×" + v.toFixed(1); } },
+    down: { min: .2, max: 1.5, step: .1, label: "音量", text: function (v) { return Math.round(v * 100) + "%"; } }
+  };
+  function sayStep(v, sc) { return Math.max(sc.min, Math.min(sc.max, Math.round(v / sc.step) * sc.step)); }
+  function sayRound(v) { return Math.round(v * 10) / 10; }
   var sayPref = loadJson("duo.say", {});
-  var sayRate = SAY_RATES.indexOf(sayPref.rate) > -1 ? sayPref.rate : 1, sayMix = !!sayPref.mix;
-  function saveSayPref() { save("duo.say", JSON.stringify({ rate: sayRate, mix: sayMix })); }
-  // the speaker shows what it will do: ×1.2 / ×0.8 in a tag, a note when the music keeps playing
+  var sayRate = typeof sayPref.rate === "number" ? sayRound(sayStep(sayPref.rate, SAY_SCALES.up)) : 1;
+  var sayVol = typeof sayPref.vol === "number" ? sayRound(sayStep(sayPref.vol, SAY_SCALES.down)) : 1;
+  var sayMix = !!sayPref.mix;
+  function saveSayPref() { save("duo.say", JSON.stringify({ rate: sayRate, vol: sayVol, mix: sayMix })); }
+  // the speaker shows what it will do: the speed and the volume in tags when not the usual, a note when the music plays on
   function sayBadges() {
     Array.prototype.forEach.call(document.querySelectorAll("[data-say]"), function (b) {
-      if (sayRate === 1) b.removeAttribute("data-rate"); else b.dataset.rate = String(sayRate);
+      if (sayRate === 1) b.removeAttribute("data-rate"); else b.dataset.rate = sayRate.toFixed(1);
+      var tag = b.querySelector(".say-vol");
+      if (sayVol === 1) { if (tag) tag.remove(); }
+      else {
+        if (!tag) { tag = document.createElement("span"); tag.className = "say-vol"; tag.setAttribute("aria-hidden", "true"); b.appendChild(tag); }
+        tag.textContent = Math.round(sayVol * 100) + "%";
+      }
       b.classList.toggle("mix", sayMix);
     });
   }
@@ -2084,9 +2105,11 @@
   $detail.addEventListener("pointerup", endScrub);
   $detail.addEventListener("pointercancel", endScrub);
 
-  // ---------- hold the speaker: a liquid dial. Up ×1.2, down ×0.8, left "together with music" ----------
+  // ---------- hold the speaker: a liquid dial. Up: speed, down: volume, left: "together with music" ----------
   // The page dims and blurs, the speaker lifts off, and three drops ooze out of it. The lifted drop follows the finger on a
-  // spring and melts into whichever drop it reaches; letting go there chooses it, letting go near the middle changes nothing.
+  // spring and melts into whichever drop it reaches; letting go near the middle changes nothing. Let go on speed or volume
+  // and that drop swells into a slider in the middle of the screen (the speaker sits at the edge, where a finger has no room
+  // to slide); let go on the note and the music setting flips.
   var SAY_HOLD = 340, SAY_R = 86, sayHold = null, sayHoldGuard = 0;
   var SAY_OPTS = {
     up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }
@@ -2106,14 +2129,13 @@
   function sayOptText(o, hot) {
     if (o === "left") return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>' +
       "<small>" + (hot ? (sayMix ? "オフにする" : "音楽と一緒に") : (sayMix ? "音楽と一緒 ON" : "音楽と一緒に")) + "</small>";
-    var r = o === "up" ? 1.2 : 0.8;
-    return "<b>×" + r + "</b><small>" + (hot && sayRate === r ? "×1 に戻す" : o === "up" ? "速く" : "ゆっくり") + "</small>";
+    var sc = SAY_SCALES[o];
+    return "<b>" + sc.text(o === "up" ? sayRate : sayVol) + "</b><small>" + (hot ? "離して調整" : sc.label) + "</small>";
   }
   function sayDialHint(pick) {
-    if (!pick) return "上 ×1.2　下 ×0.8　左 音楽と一緒に";
+    if (!pick) return "上 速度　下 音量　左 音楽と一緒に";
     if (pick === "left") return sayMix ? "音楽を止めて再生に戻す" : "音楽を流したまま再生（消音モードでは鳴りません）";
-    var r = pick === "up" ? 1.2 : 0.8;
-    return sayRate === r ? "ふつうの速さ（×1）に戻す" : "×" + r + " で再生（声の高さはそのまま）";
+    return pick === "up" ? "離すと速度を選べます（声の高さはそのまま）" : "離すと声の音量を選べます";
   }
   function openSayDial() {
     var h = sayHold;
@@ -2130,7 +2152,7 @@
     el.style.setProperty("--r", SAY_R + "px");
     var blobs = "", ui = "";
     Object.keys(SAY_OPTS).forEach(function (o, i) {
-      var on = o === "left" ? sayMix : sayRate === (o === "up" ? 1.2 : 0.8);
+      var on = o === "left" ? sayMix : o === "up" ? sayRate !== 1 : sayVol !== 1;
       blobs += '<i class="sayd-drop" data-o="' + o + '" style="--ox:' + SAY_OPTS[o].x + ";--oy:" + SAY_OPTS[o].y + ";--i:" + i + '"></i>';
       ui += '<span class="sayd-opt' + (on ? " on" : "") + '" data-o="' + o + '" style="--ox:' + SAY_OPTS[o].x + ";--oy:" + SAY_OPTS[o].y + ";--i:" + i + '">' + sayOptText(o, false) + "</span>";
     });
@@ -2194,9 +2216,9 @@
     d.closing = true;
     cancelAnimationFrame(d.raf);
     var pick = commit ? d.pick : null;
-    if (pick === "left") sayMix = !sayMix;
-    else if (pick) { var r = pick === "up" ? 1.2 : 0.8; sayRate = sayRate === r ? 1 : r; }
-    if (pick) { saveSayPref(); sayBadges(); }
+    if (pick === "left") { sayMix = !sayMix; saveSayPref(); sayBadges(); }
+    // speed / volume: the chosen drop swells into the slider panel
+    else if (pick) openSayPanel(pick, d.cx + SAY_OPTS[pick].x * SAY_R, d.cy + SAY_OPTS[pick].y * SAY_R, +h.btn.closest(".sentence-card").dataset.sid);
     // the chosen drop swallows the lifted one, then everything flows back into the speaker
     if (pick) {
       var o = SAY_OPTS[pick];
@@ -2209,11 +2231,108 @@
       d.el.classList.remove("open");
       d.knob.style.transform = d.knobUi.style.transform = d.knobUi.style.opacity = "";
       h.btn.classList.remove("held");
-      document.documentElement.classList.remove("say-holding");
-      if (pick) { h.btn.classList.remove("set"); void h.btn.offsetWidth; h.btn.classList.add("set"); }
+      if (!sayPanel) document.documentElement.classList.remove("say-holding");
+      if (pick === "left") { h.btn.classList.remove("set"); void h.btn.offsetWidth; h.btn.classList.add("set"); }
       setTimeout(function () { d.el.remove(); }, 460);
     }, pick ? 200 : 0);
   }
+  // the slider panel for speed or volume: drag the drop along the track, or tap a mark; each step takes effect at once
+  // (the volume even while the voice is playing). 試し聞き plays this sentence with it; 完了 or a tap outside closes it.
+  var sayPanel = null;
+  function openSayPanel(kind, fromX, fromY, sid) {
+    closeSayPanel(true);
+    var sc = SAY_SCALES[kind], n = Math.round((sc.max - sc.min) / sc.step), ticks = "";
+    var at = function (v) { return ((v - sc.min) / (sc.max - sc.min)).toFixed(4); };
+    for (var i = 0; i <= n; i++) {
+      var v = sayRound(sc.min + i * sc.step);
+      ticks += '<i class="sayp-tick' + (v === 1 ? " one" : "") + '" style="--t:' + at(v) + '"></i>';
+    }
+    var el = document.createElement("div");
+    el.className = "saypw";
+    el.style.setProperty("--fx", Math.round(fromX - window.innerWidth / 2) + "px");
+    el.style.setProperty("--fy", Math.round(fromY - window.innerHeight / 2) + "px");
+    el.innerHTML = '<div class="saypw-veil" data-sayp="close"></div>' +
+      '<section class="sayp" role="dialog" aria-label="' + sc.label + '">' +
+        '<p class="sayp-title">' + sc.label + "<small>" + (kind === "up" ? "声の高さはそのまま" : "声だけの大きさ") + "</small></p>" +
+        '<p class="sayp-val"></p>' +
+        '<div class="sayp-track" data-sayp="track"><i class="sayp-rail"></i><i class="sayp-fill"></i>' + ticks + '<i class="sayp-thumb"></i></div>' +
+        '<div class="sayp-scale"><span style="--t:0">' + sc.text(sc.min) + '</span><span style="--t:' + at(1) + '">' + sc.text(1) +
+          '</span><span style="--t:1">' + sc.text(sc.max) + "</span></div>" +
+        '<div class="sayp-row"><button type="button" data-sayp="reset">' + sc.text(1) + ' に戻す</button>' +
+          '<button type="button" data-sayp="try">' + ICON.say + "試し聞き</button>" +
+          '<button type="button" class="ok" data-sayp="close">完了</button></div>' +
+      "</section>";
+    document.body.appendChild(el);
+    document.documentElement.classList.add("say-holding");
+    sayPanel = { el: el, kind: kind, sid: sid, v: null, drag: null,
+      val: el.querySelector(".sayp-val"), thumb: el.querySelector(".sayp-thumb"), track: el.querySelector(".sayp-track"),
+      reset: el.querySelector('[data-sayp="reset"]') };
+    sayPanelSet(kind === "up" ? sayRate : sayVol, true);
+    void el.offsetWidth;
+    el.classList.add("open");
+    var p = sayPanel;
+    el.addEventListener("click", function (e) {
+      var t = e.target.closest("[data-sayp]");
+      if (!t || p !== sayPanel) return;
+      var what = t.dataset.sayp;
+      if (what === "close") closeSayPanel();
+      else if (what === "reset") sayPanelSet(1);
+      else if (what === "try") say(p.sid);
+    });
+    p.track.addEventListener("pointerdown", function (e) {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
+      try { p.track.setPointerCapture(e.pointerId); } catch (err) {}
+      p.drag = e.pointerId;
+      el.classList.add("dragging");
+      sayPanelAt(e.clientX);
+    });
+    p.track.addEventListener("pointermove", function (e) { if (p.drag === e.pointerId) sayPanelAt(e.clientX); });
+    function stop(e) { if (p.drag === e.pointerId) { p.drag = null; el.classList.remove("dragging"); } }
+    p.track.addEventListener("pointerup", stop);
+    p.track.addEventListener("pointercancel", stop);
+    el.addEventListener("touchstart", function (e) { if (e.target.closest(".sayp-track")) e.preventDefault(); }, { passive: false });
+  }
+  function sayPanelAt(x) {
+    var p = sayPanel, sc = p && SAY_SCALES[p.kind];
+    if (!p) return;
+    var r = p.track.getBoundingClientRect(), t = Math.max(0, Math.min(1, (x - r.left) / r.width));
+    sayPanelSet(sc.min + t * (sc.max - sc.min));
+  }
+  function sayPanelSet(v, first) {
+    var p = sayPanel, sc = SAY_SCALES[p.kind];
+    v = sayRound(sayStep(v, sc));
+    if (v === p.v) return;
+    p.v = v;
+    p.el.style.setProperty("--v", ((v - sc.min) / (sc.max - sc.min)).toFixed(4));
+    p.val.textContent = sc.text(v);
+    p.reset.disabled = v === 1;
+    if (first) return;
+    if (p.kind === "up") sayRate = v;
+    else {
+      sayVol = v;
+      if (playing && playing.gain && actx) { try { playing.gain.gain.setTargetAtTime(v, actx.currentTime, .03); } catch (e) {} }
+    }
+    saveSayPref();
+    sayBadges();
+    // each step: the drop wobbles like liquid and the number pops
+    p.thumb.classList.remove("blob"); p.val.classList.remove("pop");
+    void p.thumb.offsetWidth;
+    p.thumb.classList.add("blob"); p.val.classList.add("pop");
+  }
+  function closeSayPanel(now) {
+    var p = sayPanel;
+    sayPanel = null;
+    if (!p) return;
+    document.documentElement.classList.remove("say-holding");
+    if (now) { p.el.remove(); return; }
+    p.el.classList.add("closing");
+    p.el.classList.remove("open");
+    var btn = $detail.querySelector('.sentence-card[data-sid="' + p.sid + '"] [data-say]');
+    if (btn) { btn.classList.remove("set"); void btn.offsetWidth; btn.classList.add("set"); }
+    setTimeout(function () { p.el.remove(); }, 480);
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && sayPanel) closeSayPanel(); });
   $detail.addEventListener("pointerdown", function (e) {
     var btn = e.target.closest("[data-say]");
     if (!btn || sayHold || (e.pointerType === "mouse" && e.button !== 0)) return;
@@ -2261,7 +2380,11 @@
     say(+t.btn.closest(".sentence-card").dataset.sid);
   });
   $detail.addEventListener("touchcancel", function () { sayTouch = null; });
-  document.addEventListener("visibilitychange", function () { if (document.hidden && sayHold) { clearTimeout(sayHold.timer); closeSayDial(false); } });
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) return;
+    if (sayHold) { clearTimeout(sayHold.timer); closeSayDial(false); }
+    closeSayPanel(true);
+  });
 
   // ---------- swipe left / right: next / previous sentence ----------
   var swipe = null;

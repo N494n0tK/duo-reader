@@ -636,8 +636,70 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   transition: opacity .3s var(--ease), translate .5s var(--spring);
 }
 .sayd.open .sayd-hint { opacity: 1; translate: -50% 0; }
+/* the volume, when not 100 %, in a tag at the speaker's upper right */
+.say-vol {
+  position: absolute; right: -8px; top: -6px; padding: 2px 4px; border-radius: 999px;
+  font: 700 9px/1 var(--mono); color: #0b0d14; background: var(--tech); box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
+}
+
+/* the slider panel for speed / volume: the chosen drop swells out of the dial into it */
+.saypw { position: fixed; inset: 0; z-index: 61; display: grid; place-items: center; padding: 16px; }
+.saypw-veil {
+  position: absolute; inset: 0; opacity: 0;
+  background: rgba(5, 7, 13, .5);
+  -webkit-backdrop-filter: blur(14px) saturate(150%); backdrop-filter: blur(14px) saturate(150%);
+  transition: opacity .38s var(--ease);
+}
+.saypw.open .saypw-veil { opacity: 1; }
+.sayp {
+  position: relative; width: min(360px, 100%); padding: 20px 22px 18px; text-align: center;
+  border-radius: 999px; -webkit-user-select: none; user-select: none;
+  background: var(--glass); background-color: color-mix(in srgb, var(--bg) 66%, transparent);
+  -webkit-backdrop-filter: blur(30px) saturate(190%); backdrop-filter: blur(30px) saturate(190%);
+  box-shadow: var(--glass-inset), var(--glass-shadow);
+  transform: translate(var(--fx, 0), var(--fy, 0)) scale(.16); opacity: 0;
+  transition: transform .72s var(--spring), opacity .22s var(--ease), border-radius .5s var(--ease);
+}
+.saypw.open .sayp { transform: none; opacity: 1; border-radius: 34px; }
+.saypw.closing .sayp { transition: transform .42s var(--ease), opacity .28s var(--ease) .08s, border-radius .3s var(--ease); }
+.sayp > * { transition: opacity .3s var(--ease) .12s; }
+.saypw:not(.open) .sayp > * { opacity: 0; transition-delay: 0s; }
+.sayp-title { margin: 0; display: flex; align-items: baseline; justify-content: center; gap: 8px; font: 600 14px/1.2 var(--sans); color: var(--text); }
+.sayp-title small { font: 400 11px/1 var(--sans); color: var(--faint); }
+.sayp-val { margin: 6px 0 4px; font: italic 400 52px/1.1 var(--serif); color: var(--marker); }
+.sayp-val.pop { animation: dial-pop .35s var(--spring); }
+.sayp-track { position: relative; height: 48px; margin: 4px 15px 0; touch-action: none; cursor: pointer; }
+.sayp-rail, .sayp-fill { position: absolute; left: 0; top: 50%; height: 8px; margin-top: -4px; border-radius: 999px; }
+.sayp-rail { right: 0; background: var(--well); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .25); }
+.sayp-fill { width: calc(var(--v) * 100%); background: var(--marker-soft); transition: width .5s var(--spring); }
+.sayp-tick { position: absolute; left: calc(var(--t) * 100%); top: 50%; width: 2px; height: 6px; margin: 9px 0 0 -1px; border-radius: 1px; background: var(--faint); }
+.sayp-tick.one { height: 12px; margin-top: 7px; background: var(--muted); }
+.sayp-thumb {
+  position: absolute; left: calc(var(--v) * 100%); top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%;
+  background: var(--marker); box-shadow: 0 6px 18px rgba(245, 205, 85, .35), inset 0 1px 0 rgba(255, 255, 255, .5);
+  transition: left .5s var(--spring);
+}
+.saypw.dragging .sayp-thumb, .saypw.dragging .sayp-fill { transition-duration: .16s; transition-timing-function: var(--ease); }
+.sayp-thumb.blob { animation: sayp-blob .5s var(--spring); }
+@keyframes sayp-blob { 25% { transform: scale(1.3, .78); } 55% { transform: scale(.9, 1.1); } }
+.saypw.dragging .sayp-thumb { scale: 1.15; }
+.sayp-scale { position: relative; height: 16px; margin: 0 15px; }
+.sayp-scale span { position: absolute; left: calc(var(--t) * 100%); translate: -50% 0; font: 11px/1 var(--mono); color: var(--faint); white-space: nowrap; }
+.sayp-scale span:first-child { translate: -20% 0; }
+.sayp-scale span:last-child { translate: -80% 0; }
+.sayp-row { display: flex; gap: 8px; margin-top: 18px; }
+.sayp-row button {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 44px; padding: 0 8px; border-radius: 999px; white-space: nowrap;
+  font: 500 13px/1 var(--sans); color: var(--text); background: var(--pane); box-shadow: var(--glass-inset), 0 4px 12px rgba(0, 0, 0, .14);
+  touch-action: manipulation; transition: transform .35s var(--spring), opacity .2s;
+}
+.sayp-row button:active { transform: scale(.9); }
+.sayp-row button:disabled { opacity: .35; }
+.sayp-row button.ok { color: #141726; background: var(--marker); box-shadow: 0 6px 18px rgba(245, 205, 85, .3), inset 0 1px 0 rgba(255, 255, 255, .5); }
+.sayp-row svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.sayp-row svg .spk { fill: currentColor; stroke-width: 1.4; }
 @media (prefers-reduced-motion: reduce) {
-  .sayd *, .say-btn.set { transition-duration: .01s !important; transition-delay: 0s !important; animation: none !important; }
+  .sayd *, .saypw *, .say-btn.set { transition-duration: .01s !important; transition-delay: 0s !important; animation: none !important; }
 }
 [data-r="S"] { --role: var(--tech); }
 [data-r="V"] { --role: var(--marker); }
