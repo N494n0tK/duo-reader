@@ -2816,10 +2816,20 @@
     document.documentElement.dataset.theme = theme;
     meta.setAttribute("content", theme === "light" ? "#ffffff" : "#11131b");
   }
+  // the new theme spreads out of the button like a drop; where the browser cannot do that, it just changes
   document.getElementById("toggle-theme").addEventListener("click", function () {
-    var next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-    applyTheme(next);
+    var root = document.documentElement, next = root.dataset.theme === "light" ? "dark" : "light";
     save("duo.theme", next);
+    if (!document.startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { applyTheme(next); return; }
+    var r = this.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    var far = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    root.classList.add("theme-swap");
+    var swap = document.startViewTransition(function () { applyTheme(next); });
+    swap.ready.then(function () {
+      root.animate({ clipPath: ["circle(0px at " + x + "px " + y + "px)", "circle(" + far + "px at " + x + "px " + y + "px)"] },
+        { duration: 650, easing: "cubic-bezier(.3, .7, .2, 1)", pseudoElement: "::view-transition-new(root)" });
+    }).catch(function () {});
+    swap.finished.then(function () { root.classList.remove("theme-swap"); }, function () { root.classList.remove("theme-swap"); });
   });
 
   // ---------- start ----------
