@@ -12,17 +12,17 @@
   position: relative;
   width: min(440px, 100%);
   background: var(--glass);
-  -webkit-backdrop-filter: blur(26px) saturate(175%);
-  backdrop-filter: blur(26px) saturate(175%);
+  -webkit-backdrop-filter: var(--bf);
+  backdrop-filter: var(--bf);
   box-shadow: var(--glass-inset), var(--glass-shadow);
 }
-.importer-card { padding: 30px 24px 24px; border-radius: 30px; animation: imp-rise .7s var(--spring) both; }
+.importer-card { padding: 30px 24px 24px; border-radius: var(--r-card); animation: imp-rise .8s var(--spring-soft) both; }
 .importer-card::before, .data-card::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
-  background: linear-gradient(140deg, var(--glass-edge-a), var(--glass-edge-b) 32%, var(--glass-edge-b) 68%, var(--glass-edge-a));
+  background: var(--rim);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude;
-  opacity: .7;
+  opacity: .75;
 }
 .importer .brand { margin-bottom: 18px; }
 .importer .brand-mark { font-size: 34px; }
@@ -30,8 +30,8 @@
 .imp-lead { margin: 0 0 18px; color: var(--muted); font-size: 15px; }
 .imp-lead b, .imp-steps b { color: var(--text); font-weight: 600; }
 .imp-hint {
-  margin: 0 0 18px; padding: 12px 14px; border-radius: 16px;
-  background: var(--marker-soft); box-shadow: inset 0 0 0 1px var(--marker-soft);
+  margin: 0 0 18px; padding: 12px 14px; border-radius: var(--r-item);
+  background: var(--marker-soft); box-shadow: var(--glass-inset), 0 0 0 .5px var(--marker-strong);
   font-size: 13.5px; line-height: 1.6;
 }
 .imp-hint b { display: block; margin-bottom: 2px; }
@@ -39,14 +39,14 @@
 .imp-btn {
   position: relative; display: grid; place-items: center;
   width: 100%; height: 52px; border-radius: 999px;
-  background: var(--marker); color: #141726;
+  background: var(--gold); color: var(--on-gold);
   font: 600 16px/1 var(--sans); cursor: pointer;
-  box-shadow: 0 8px 24px rgba(245, 205, 85, .28), inset 0 1px 0 rgba(255, 255, 255, .5);
-  transition: transform .35s var(--spring);
+  box-shadow: var(--gold-shadow);
+  transition: transform .4s var(--spring), opacity .2s;
   -webkit-tap-highlight-color: transparent;
 }
-:root[data-theme="light"] .imp-btn { background: #f5c33b; }
 .imp-btn:active { transform: scale(.96); }
+.imp-btn:disabled { opacity: .4; box-shadow: none; }
 .imp-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
 .imp-btn:focus-within { outline: 2px solid var(--text); outline-offset: 3px; }
 
@@ -63,18 +63,14 @@
   position: fixed; inset: 0; z-index: 50;
   display: grid; place-items: center;
   padding: 16px;
-  background: rgba(0, 0, 0, 0);
-  transition: background-color .3s var(--ease);
 }
-.data-sheet.open {
-  background: rgba(0, 0, 0, .42);
-  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-}
+/* a sheet: thick glass that rises out of the bottom edge */
 .data-card {
-  padding: 22px 22px 18px; border-radius: 28px;
-  background-color: color-mix(in srgb, var(--bg) 84%, transparent);
-  opacity: 0; transform: translateY(24px) scale(.97);
-  transition: opacity .3s var(--ease), transform .45s var(--spring);
+  padding: 22px 22px 18px; border-radius: var(--r-card);
+  background-color: color-mix(in srgb, var(--bg) 58%, transparent);
+  -webkit-backdrop-filter: var(--bf-thick); backdrop-filter: var(--bf-thick);
+  opacity: 0; transform: translateY(46px) scale(.94); transform-origin: 50% 100%;
+  transition: opacity .28s var(--ease), transform .62s var(--spring-soft);
 }
 .data-sheet.open .data-card { opacity: 1; transform: none; }
 .data-card h2 { margin: 0 0 12px; font: italic 600 22px/1.2 var(--serif); }
@@ -83,10 +79,11 @@
 .data-card dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .sheet-btn {
   display: block; width: 100%; height: 46px; margin-top: 8px; border-radius: 999px;
-  background: var(--glass-flat); box-shadow: var(--glass-inset);
+  background: var(--pane); box-shadow: var(--glass-inset), var(--lift);
   font-size: 15px; color: var(--text);
-  transition: transform .35s var(--spring), background-color .2s;
+  transition: transform .4s var(--spring), background-color .25s, opacity .2s;
 }
+.sheet-btn:disabled { opacity: .4; }
 .sheet-btn:active { transform: scale(.96); }
 .sheet-btn.danger { color: var(--fix); }
 .data-card .imp-note { margin-top: 14px; }
@@ -105,28 +102,25 @@
 .wm-label { flex: none; width: 2.6em; font-size: 13px; color: var(--faint); }
 .wm-num {
   width: 5.2em; height: 40px; padding: 0 12px; border-radius: 999px; border: 0;
-  background: var(--pane); box-shadow: var(--glass-inset), inset 0 0 0 1px var(--glass-edge-b);
+  background: var(--well); box-shadow: var(--well-inset);
   color: var(--text); font: italic 17px var(--serif); text-align: center;
   -webkit-appearance: none; appearance: none;
 }
-.wm-num:focus { outline: none; box-shadow: var(--glass-inset), 0 0 0 2px var(--marker-strong); }
+.wm-num:focus { outline: none; box-shadow: var(--well-inset), 0 0 0 2px var(--marker-strong), 0 0 0 6px var(--marker-soft); }
 .wm-tilde { color: var(--faint); }
 .wm-seg {
   position: relative; flex: 1; display: grid; grid-template-columns: repeat(3, 1fr);
-  padding: 4px; border-radius: 999px; background: var(--pane); box-shadow: var(--glass-inset);
+  padding: 4px; border-radius: 999px; background: var(--well); box-shadow: var(--well-inset);
 }
-.wm-thumb {
-  position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 999px;
-  background: var(--thumb); box-shadow: var(--glass-inset), 0 4px 12px rgba(0, 0, 0, .2);
-  transform: translateX(calc(100% * var(--k, 2))); transition: transform .55s var(--spring);
-}
-.wm-seg button { position: relative; z-index: 1; height: 34px; font-size: 13.5px; font-weight: 600; color: var(--muted); transition: color .3s; }
+.wm-seg { --n: 3; }
+.wm-seg button { position: relative; z-index: 1; height: 34px; border-radius: 999px; font-size: 13.5px; font-weight: 600; color: var(--muted); transition: color .3s, transform .4s var(--spring); }
+.wm-seg button:active { transform: scale(.95); }
 .wm-seg button[aria-checked="true"] { color: var(--text); }
 .wm-preview {
   --wk: 1;
   position: relative; width: 100%; aspect-ratio: 338 / 158; margin: 6px 0 8px;
   border-radius: calc(22px * var(--wk)); overflow: hidden;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, .35), 0 0 0 1px var(--glass-edge-b);
+  box-shadow: var(--pane-shadow), 0 0 0 1px var(--glass-edge-b);
 }
 .wm-preview iframe {
   position: absolute; top: 0; left: 0; width: 338px; height: 158px; border: 0;
@@ -137,13 +131,16 @@
 .wm-colors { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .wm-color {
   height: 36px; border-radius: 999px; font-size: 12.5px; color: var(--faint);
-  background: var(--pane); box-shadow: var(--glass-inset);
+  background: var(--glass-flat); box-shadow: var(--glass-inset);
   display: inline-flex; align-items: center; justify-content: center;
-  transition: transform .35s var(--spring), color .2s, background-color .2s, box-shadow .2s;
+  transition: transform .4s var(--spring), color .25s, background-color .25s, box-shadow .3s var(--ease);
 }
 .wm-color:active { transform: scale(.94); }
 .wm-color .cdot { margin-right: 5px; opacity: .4; transition: opacity .2s; }
 .wm-color[data-want="n"] .cdot { display: none; }
-.wm-color[aria-pressed="true"] { color: var(--text); box-shadow: var(--glass-inset), inset 0 0 0 1px var(--glass-edge-a); }
-.wm-color[aria-pressed="true"][data-color] { background: color-mix(in srgb, var(--tint) 24%, transparent); box-shadow: var(--glass-inset), inset 0 0 0 1px color-mix(in srgb, var(--tint) 60%, transparent); }
+.wm-color[aria-pressed="true"] { color: var(--text); background: var(--thumb); box-shadow: var(--glass-inset), var(--lift); }
+.wm-color[aria-pressed="true"][data-color] {
+  background: linear-gradient(155deg, color-mix(in srgb, var(--tint) 48%, transparent), color-mix(in srgb, var(--tint) 20%, transparent) 55%, color-mix(in srgb, var(--tint) 34%, transparent));
+  box-shadow: var(--glass-inset), 0 0 0 .5px color-mix(in srgb, var(--tint) 60%, transparent), 0 8px 20px -8px color-mix(in srgb, var(--tint) 60%, transparent);
+}
 .wm-color[aria-pressed="true"] .cdot { opacity: 1; }

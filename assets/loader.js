@@ -83,7 +83,7 @@
     var old = document.querySelector(".importer");
     if (old) old.remove();
     var s = document.createElement("script");
-    s.src = "assets/app.js?v=ee932f3aac";
+    s.src = "assets/app.js?v=7698908880";
     document.body.appendChild(s);
     setupDataButton(pack);
   }
@@ -367,6 +367,41 @@
     window.addEventListener("resize", scalePreview);
     rebuild();
   }
+
+  // ---------- 指に光がついてくる（ガラスの手ざわり） ----------
+  // 押せるガラスに触れている間、その部品の形に切り抜いた光を指の位置に重ねる。
+  // 光は画面に1つだけ置いて使い回すので、どの部品でも同じ効き方になり、部品ごとの見た目とぶつからない。
+  var PRESSABLE = ".icon-btn, .nav-btn, .chip, .row, .recent-item, .word-item, .more, .tab, .nw-tab, .syn-btn, .seek-btn, .seek-row, " +
+    ".tint-btn, .tint-hide, .gauge-bar, .gauge-cells button, .nt-fold, .nt-point summary, button.nw-fam, .dial-keys button, " +
+    ".sayp-row button, .say-pp, .sheet-btn, .imp-btn, .wm-seg button, .wm-color, .note-key button, .note-all";
+  var light = null, litRect = null;
+  function lightMove(e) {
+    light.style.setProperty("--lx", (e.clientX - litRect.left) + "px");
+    light.style.setProperty("--ly", (e.clientY - litRect.top) + "px");
+  }
+  function lightOff() {
+    if (litRect) { litRect = null; light.classList.remove("on"); }
+  }
+  document.addEventListener("pointerdown", function (e) {
+    var el = !e.button && e.target.closest && e.target.closest(PRESSABLE);
+    if (!el || el.disabled) return;
+    if (!light) {
+      light = document.createElement("div");
+      light.className = "touch-light";
+      light.setAttribute("aria-hidden", "true");
+      light.appendChild(document.createElement("i"));
+      document.body.appendChild(light);
+    }
+    litRect = el.getBoundingClientRect();
+    light.style.width = litRect.width + "px";
+    light.style.height = litRect.height + "px";
+    light.style.transform = "translate(" + litRect.left + "px," + litRect.top + "px)";
+    light.style.borderRadius = getComputedStyle(el).borderRadius;
+    lightMove(e);
+    light.classList.add("on");
+  }, true);
+  document.addEventListener("pointermove", function (e) { if (litRect) lightMove(e); }, true);
+  ["pointerup", "pointercancel", "scroll", "blur"].forEach(function (type) { window.addEventListener(type, lightOff, true); });
 
   // ---------- 圏外でも開けるようにする（Service Worker） ----------
   if ("serviceWorker" in navigator && /^(https:|http:\/\/(localhost|127\.0\.0\.1)[:/])/.test(location.href)) {

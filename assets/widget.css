@@ -7,7 +7,8 @@ html, body { height: 100%; overflow: hidden; }
 body.widget { background: var(--bg); }
 /* ウィジェットは静止画として撮られるので、動きは止めて完成した状態で見せる */
 .widget .ambient { inset: auto; top: 0; left: 0; width: var(--wg-w); height: var(--wg-h); }
-.widget .ambient i { animation: none; filter: blur(calc(var(--u) * 40)); width: calc(var(--wg-w) * .62); height: calc(var(--wg-w) * .62); }
+.widget .ambient i, .widget .ambient::before { animation: none; filter: blur(calc(var(--u) * 40)); width: calc(var(--wg-w) * .62); height: calc(var(--wg-w) * .62); }
+.widget .ambient::before { width: calc(var(--wg-w) * .34); height: calc(var(--wg-w) * .34); bottom: calc(var(--wg-w) * -.1); right: calc(var(--wg-w) * -.12); }
 .widget .ambient i:nth-child(1) { top: calc(var(--wg-w) * -.38); right: calc(var(--wg-w) * -.2); }
 .widget .ambient i:nth-child(2) { top: auto; bottom: calc(var(--wg-w) * -.4); left: calc(var(--wg-w) * -.24); }
 .widget .ambient i:nth-child(3) { width: calc(var(--wg-w) * .4); height: calc(var(--wg-w) * .4); top: 30%; left: 38%; }
@@ -32,10 +33,10 @@ body.widget { background: var(--bg); }
 }
 .wg-card::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
-  background: linear-gradient(140deg, var(--glass-edge-a), var(--glass-edge-b) 32%, var(--glass-edge-b) 68%, var(--glass-edge-a));
+  background: var(--rim);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude;
-  opacity: .7;
+  opacity: .75;
 }
 
 .wg-head { flex: none; display: flex; align-items: baseline; gap: calc(var(--u) * 5.4); }
