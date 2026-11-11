@@ -1405,8 +1405,8 @@
       '<div class="tint-panel"><div class="tint-list"><div class="tint-sws" role="radiogroup" aria-label="' + what + '">' + swatches(colorOf(key)) + "</div>" +
         // under the colors: blur the Japanese / the English, right from here
         '<i class="tint-sep" aria-hidden="true"></i>' +
-        '<button type="button" class="tint-hide" data-hide="ja" aria-pressed="' + document.body.classList.contains("hide-ja") + '" aria-label="日本語を隠す">あ</button>' +
-        '<button type="button" class="tint-hide" data-hide="en" aria-pressed="' + document.body.classList.contains("hide-en") + '" aria-label="英語を隠す">A</button>' +
+        '<button type="button" class="tint-hide" data-hide="ja" aria-pressed="' + document.body.classList.contains("hide-ja") + '" aria-label="日本語を隠す"><span>あ</span></button>' +
+        '<button type="button" class="tint-hide" data-hide="en" aria-pressed="' + document.body.classList.contains("hide-en") + '" aria-label="英語を隠す"><span>A</span></button>' +
       "</div></div>" +
     "</div></div>";
     if (opts.home) {
@@ -1432,6 +1432,8 @@
     html += '<section class="sentence-card' + (same ? " static" : "") + '"' + colorAttrs(key) + ' data-sid="' + sid + '" aria-label="例文 ' + sid + '">' +
       '<div class="card-head"><span class="card-num">#' + pad3(sid) + '</span><span class="card-of">/ ' + SENTENCES.length + "</span>" +
         '<button type="button" class="syn-btn" data-syn hidden aria-pressed="' + synOn + '" title="文型の色分け"><i class="syn-dots" aria-hidden="true"><b data-r="S"></b><b data-r="V"></b><b data-r="O"></b></i>文型</button>' +
+        // one tap: blur the English of this sentence (the same switch as "A" in the header and under the color drop)
+        '<button type="button" class="hide-btn" data-hide="en" aria-pressed="' + document.body.classList.contains("hide-en") + '" aria-label="英語を隠す" title="英語をぼかす"><span>A</span></button>' +
         (notesKey ? '<button type="button" class="say-btn" data-say aria-pressed="false" aria-label="この例文の音声">' + ICON.say + "</button>" : "") + "</div>" +
       '<p class="sentence-en" lang="en">' + renderSentenceHtml(sid, word && word.id) + "</p>" +
       '<p class="sentence-ja">' + esc(s.ja) + '</p><p class="say-msg" role="status"></p></section>';
@@ -2789,8 +2791,7 @@
   // ---------- toggles ----------
   var $toggleJa = document.getElementById("toggle-ja"), $toggleEn = document.getElementById("toggle-en");
   function syncHideBtn(which, on) {
-    var b = $detail.querySelector('[data-hide="' + which + '"]');
-    if (b) b.setAttribute("aria-pressed", String(on));
+    Array.prototype.forEach.call($detail.querySelectorAll('[data-hide="' + which + '"]'), function (b) { b.setAttribute("aria-pressed", String(on)); });
   }
   function setHideJa(on) {
     document.body.classList.toggle("hide-ja", on);

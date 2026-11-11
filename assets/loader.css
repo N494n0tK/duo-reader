@@ -25,7 +25,8 @@
   opacity: .75;
 }
 .importer .brand { margin-bottom: 18px; }
-.importer .brand-mark { font-size: 34px; }
+.importer .brand-mark { --s: 34px; }
+.importer .brand { align-items: center; gap: 14px; }
 .importer .brand-sub { font-size: 13px; }
 .imp-lead { margin: 0 0 18px; color: var(--muted); font-size: 15px; }
 .imp-lead b, .imp-steps b { color: var(--text); font-weight: 600; }

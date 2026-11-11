@@ -83,7 +83,7 @@
     var old = document.querySelector(".importer");
     if (old) old.remove();
     var s = document.createElement("script");
-    s.src = "assets/app.js?v=7698908880";
+    s.src = "assets/app.js?v=4ec19ed55f";
     document.body.appendChild(s);
     setupDataButton(pack);
   }
@@ -372,7 +372,7 @@
   // 押せるガラスに触れている間、その部品の形に切り抜いた光を指の位置に重ねる。
   // 光は画面に1つだけ置いて使い回すので、どの部品でも同じ効き方になり、部品ごとの見た目とぶつからない。
   var PRESSABLE = ".icon-btn, .nav-btn, .chip, .row, .recent-item, .word-item, .more, .tab, .nw-tab, .syn-btn, .seek-btn, .seek-row, " +
-    ".tint-btn, .tint-hide, .gauge-bar, .gauge-cells button, .nt-fold, .nt-point summary, button.nw-fam, .dial-keys button, " +
+    ".tint-btn, .tint-hide, .hide-btn, .gauge-bar, .gauge-cells button, .nt-fold, .nt-point summary, button.nw-fam, .dial-keys button, " +
     ".sayp-row button, .say-pp, .sheet-btn, .imp-btn, .wm-seg button, .wm-color, .note-key button, .note-all";
   var light = null, litRect = null;
   function lightMove(e) {
