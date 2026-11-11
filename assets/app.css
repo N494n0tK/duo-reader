@@ -668,6 +668,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   transition: color .25s, background-color .25s, box-shadow .3s var(--ease), transform .4s var(--spring);
 }
 .hide-btn:active { transform: scale(.88); }
+/* after the speaker, clear of its speed and volume tags */
+.say-btn + .hide-btn { margin-left: 13px; }
 .hide-btn[aria-pressed="true"] { background: var(--on); color: var(--text); box-shadow: var(--on-shadow); }
 .icon-btn > span[aria-hidden], .tint-hide > span, .hide-btn > span { transition: filter .35s var(--ease), opacity .3s; }
 .icon-btn[aria-pressed="true"] > span[aria-hidden], .tint-hide[aria-pressed="true"] > span, .hide-btn[aria-pressed="true"] > span { filter: blur(1.6px); }
