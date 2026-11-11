@@ -43,10 +43,8 @@ body.widget { background: var(--bg); }
 .wg-num { font: italic 400 calc(var(--u) * 20.5)/1 var(--serif); color: var(--marker); }
 .wg-of, .wg-time { font: calc(var(--u) * 8) var(--mono); color: var(--faint); }
 .wg-time { margin-left: auto; }
-.wg-brand {
-  font: italic 600 calc(var(--u) * 12.6)/1 var(--serif); padding: 0 calc(var(--u) * 2); margin-left: calc(var(--u) * 5.4);
-  background: linear-gradient(var(--marker-strong), var(--marker-strong)) no-repeat 0 88% / 100% 38%;
-}
+.wg-brand { --s: calc(var(--u) * 12.6); margin-left: calc(var(--u) * 7); align-self: center; }
+.wg-brand::before { animation: none; --draw: 1; }
 .wg-msg .wg-brand { margin-left: 0; }
 
 .wg-body { flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; }
