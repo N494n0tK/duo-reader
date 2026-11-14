@@ -83,7 +83,7 @@
     var old = document.querySelector(".importer");
     if (old) old.remove();
     var s = document.createElement("script");
-    s.src = "assets/app.js?v=dbe3376fa5";
+    s.src = "assets/app.js?v=ff18f7ae7a";
     document.body.appendChild(s);
     setupDataButton(pack);
   }
@@ -402,6 +402,91 @@
   }, true);
   document.addEventListener("pointermove", function (e) { if (litRect) lightMove(e); }, true);
   ["pointerup", "pointercancel", "scroll", "blur"].forEach(function (type) { window.addEventListener(type, lightOff, true); });
+
+  // ---------- 選ばれているつまみをつかんで滑らせる（Liquid Glass のしずく） ----------
+  // 単語/例文などの切り替えで、選ばれている所を押さえると、つまみが指の下で丸いしずくに縮む。
+  // そのまま横に滑らせると指についてきて、離した所の項目に切り替わる。ふつうに押すだけの切り替えは今まで通り。
+  var SEG_THUMB = ".tab-thumb, .nw-thumb, .wm-thumb";
+  var held = null, eatClick = false, eatTimer = 0;
+  function segPlace(x) {
+    var h = held, r = h.bar.getBoundingClientRect(), now = Date.now();
+    var a = h.list[0].getBoundingClientRect(), z = h.list[h.list.length - 1].getBoundingClientRect();
+    var lo = a.left + h.d / 2, hi = z.right - h.d / 2, cx = x;
+    // past the ends the drop follows only a little, as if held back by the wall
+    if (cx < lo) cx = lo - Math.min(12, (lo - cx) / 4);
+    if (cx > hi) cx = hi + Math.min(12, (cx - hi) / 4);
+    var v = h.t ? Math.abs(x - h.lx) / Math.max(8, now - h.t) : 0;
+    h.v = h.v * .6 + Math.min(.55, v * .3) * .4;
+    h.lx = x; h.t = now;
+    h.bar.style.setProperty("--hx", (cx - r.left) + "px");
+    h.bar.style.setProperty("--hv", h.v.toFixed(3));
+    clearTimeout(h.still);
+    h.still = setTimeout(function () { if (held === h) { h.v = 0; h.bar.style.setProperty("--hv", "0"); } }, 90);
+    var k = 0, best = Infinity;
+    h.list.forEach(function (b, i) {
+      var br = b.getBoundingClientRect(), dist = Math.abs(br.left + br.width / 2 - cx);
+      if (dist < best) { best = dist; k = i; }
+    });
+    if (k !== h.k) {
+      h.list[h.k].classList.remove("under");
+      h.k = k;
+      h.bar.style.setProperty("--k", k); // the pill waits underneath at the place the drop is over
+    }
+    h.list[k].classList.add("under");
+  }
+  function segRelease(cancel) {
+    var h = held;
+    held = null;
+    clearTimeout(h.still);
+    h.list.forEach(function (b) { b.classList.remove("under"); });
+    h.bar.classList.remove("held", "moving");
+    h.bar.classList.add("releasing");
+    clearTimeout(h.bar._released);
+    h.bar._released = setTimeout(function () { h.bar.classList.remove("releasing"); }, 650);
+    if (cancel || h.k === h.k0) h.bar.style.setProperty("--k", h.k0);
+    if (h.moved) {
+      // the finger's own click would land on the place it started from, so it is dropped
+      eatClick = true;
+      clearTimeout(eatTimer);
+      eatTimer = setTimeout(function () { eatClick = false; }, 400);
+      if (!cancel && h.k !== h.k0) h.list[h.k].click();
+    }
+  }
+  document.addEventListener("pointerdown", function (e) {
+    if (e.button || held || !e.target.closest) return;
+    var b = e.target.closest("button"), bar = b && b.parentNode;
+    if (!bar || !bar.matches(".tabs, .nw-tabs, .wm-seg") || !b.matches('[aria-selected="true"], [aria-checked="true"]') || b.disabled) return;
+    var thumb = bar.querySelector(SEG_THUMB);
+    if (!thumb) return;
+    var list = Array.prototype.filter.call(bar.children, function (x) { return x.tagName === "BUTTON" && !x.hidden; });
+    var k = list.indexOf(b);
+    if (k < 0 || list.length < 2) return;
+    held = { id: e.pointerId, bar: bar, list: list, k: k, k0: k, x0: e.clientX, moved: false, d: thumb.offsetHeight, v: 0, lx: e.clientX, t: 0 };
+    bar.style.setProperty("--hd", held.d + "px");
+    bar.classList.remove("releasing");
+    segPlace(e.clientX);
+    bar.classList.add("held");
+  });
+  document.addEventListener("pointermove", function (e) {
+    if (!held || e.pointerId !== held.id) return;
+    if (!held.moved) {
+      if (Math.abs(e.clientX - held.x0) < 6) return;
+      held.moved = true;
+      held.bar.classList.add("moving");
+      lightOff();
+      // only now does the bar keep the finger, so a plain press stays an ordinary click
+      try { held.bar.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+    segPlace(e.clientX);
+  });
+  document.addEventListener("pointerup", function (e) { if (held && e.pointerId === held.id) segRelease(false); });
+  document.addEventListener("pointercancel", function (e) { if (held && e.pointerId === held.id) segRelease(true); });
+  document.addEventListener("click", function (e) {
+    if (!eatClick || !e.isTrusted) return;
+    eatClick = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
 
   // ---------- 圏外でも開けるようにする（Service Worker） ----------
   if ("serviceWorker" in navigator && /^(https:|http:\/\/(localhost|127\.0\.0\.1)[:/])/.test(location.href)) {

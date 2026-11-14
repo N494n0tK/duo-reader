@@ -2657,7 +2657,7 @@
     swipe = null;
     if (e.touches.length !== 1 || !state.current || state.current.charAt(0) === "t") return;
     // the dock swipes like the rest of the page; only while a hidden sentence is being rubbed clear does it keep the finger
-    if (e.target.closest(".rail, pre, input, .seek, .gauge, .tint, .dock.reveal, .say-btn, .say-wave")) return;
+    if (e.target.closest('.rail, pre, input, .seek, .gauge, .tint, .dock.reveal, .say-btn, .say-wave, .nw-tab[aria-selected="true"]')) return;
     if ($detail.querySelector(".gauge.open, .tint.open")) return;
     var t = e.touches[0];
     swipe = { x: t.clientX, y: t.clientY, dx: 0, on: false, time: Date.now(), art: null };

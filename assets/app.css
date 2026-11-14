@@ -239,6 +239,25 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   background: var(--thumb); box-shadow: var(--glass-inset), var(--lift);
   transition: --ka .3s var(--ease), --kb .62s var(--spring);
 }
+/* Hold the chosen place and the pill gathers into a round drop under the finger; slide it and let go to choose
+   (pwa/loader.js). --hx is the drop's middle, --hd its size, --hv how fast it moves: a fast drop is drawn out. */
+.tabs, .nw-tabs, .wm-seg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.tabs > [aria-selected="true"], .nw-tabs > [aria-selected="true"], .wm-seg > [aria-checked="true"] { touch-action: pan-y; }
+.held > .tab-thumb, .held > .nw-thumb, .held > .wm-thumb {
+  left: calc(var(--hx) - var(--hd) / 2); width: var(--hd);
+  scale: calc(1.16 + var(--hv, 0)) calc(1.16 - var(--hv, 0) * .4);
+  box-shadow: var(--glass-inset), var(--lift), 0 12px 26px -10px rgba(0, 0, 0, .45);
+  -webkit-backdrop-filter: var(--bf-clear); backdrop-filter: var(--bf-clear);
+  transition: left .42s var(--spring-soft), width .42s var(--spring-soft), scale .45s var(--spring), box-shadow .3s var(--ease);
+}
+.held.moving > .tab-thumb, .held.moving > .nw-thumb, .held.moving > .wm-thumb { transition-duration: .09s, .42s, .3s, .3s; }
+/* letting go: the drop spreads back into the pill at its new place */
+.releasing > .tab-thumb, .releasing > .nw-thumb, .releasing > .wm-thumb {
+  transition: left .5s var(--spring-soft), width .55s var(--spring), scale .55s var(--spring), box-shadow .4s var(--ease), --ka .3s var(--ease), --kb .62s var(--spring);
+}
+.tabs.held > .tab:not(.under), .nw-tabs.held > .nw-tab:not(.under), .wm-seg.held > button:not(.under) { color: var(--muted); }
+.tabs.held > .tab.under, .nw-tabs.held > .nw-tab.under, .wm-seg.held > button.under { color: var(--text); }
+.tabs.held > .tab:active, .nw-tabs.held > .nw-tab:active, .wm-seg.held > button:active { transform: none; }
 
 /* ===== Layout ===== */
 .app { display: grid; grid-template-columns: var(--list-w) 1fr; height: 100vh; height: 100dvh; }
