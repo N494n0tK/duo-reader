@@ -67,7 +67,16 @@
       if (marksCache[sid]) return marksCache[sid];
       var s = SENTENCES[sid - 1];
       var owner = new Array(s.en.length).fill(null);
+      // words whose place was checked by hand (assets/slots.js) take their letters first
+      var FIX = window.DUO_MARKFIX || {}, fixed = {};
       (wordsBySid[sid] || []).forEach(function (w) {
+        var f = FIX[w.id];
+        if (!f || f.n !== s.en.length) return;
+        fixed[w.id] = true;
+        f.m.forEach(function (r) { for (var j = r[0]; j < r[1]; j++) owner[j] = w.id; });
+      });
+      (wordsBySid[sid] || []).forEach(function (w) {
+        if (fixed[w.id]) return;
         var from = 0, prevEnd = -1;
         wordPatterns(w.word).forEach(function (re) {
           var hit = find(re, from) || find(re, 0);

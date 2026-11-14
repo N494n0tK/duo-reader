@@ -1090,7 +1090,7 @@
   // ---------- highlighter (assets/marks.js): which DUO word owns each character of a sentence ----------
   var sentenceMarks = window.DuoMarks(DATA).marks;
 
-  // ---------- a phrase's open places (assets/slots.js): which part of the sentence fills its A, B, ～ or do ----------
+  // ---------- a phrase's open places (assets/slots.js): which part of the sentence fills its A, B, ～, do or one's ----------
   var SLOTS = window.DUO_SLOTS || {};
   function slotsOf(word) {
     var x = word && SLOTS[word.id];
@@ -1101,8 +1101,8 @@
   function headwordHtml(word) {
     var have = {};
     slotsOf(word).forEach(function (x) { have[x[0]] = true; });
-    return esc(word.word).replace(/(^|[^A-Za-z'])(A|B|～|〜|doing|done|do)(?![A-Za-z])/g, function (m, pre, ph) {
-      var label = ph === "〜" ? "～" : ph;
+    return esc(word.word).replace(/(^|[^A-Za-z';])(A|B|～|〜|doing|done|do|oneself|one&#39;s)(?![A-Za-z])/g, function (m, pre, ph) {
+      var label = ph === "〜" ? "～" : ph === "one&#39;s" ? "one's" : ph;
       return have[label] ? pre + '<b class="ph"' + slotAttr(label) + ">" + ph + "</b>" : m;
     });
   }

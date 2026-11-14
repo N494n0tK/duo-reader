@@ -60,11 +60,11 @@
   --c-y: #ffc35a;
   --c-g: #56dba4;
 
-  /* the open places of a phrase (A, B, ～, and do / doing / done in --slot-x) in the headword, its meaning and the sentence */
+  /* the open places of a phrase (A, B, ～, and do / doing / done / one's / oneself in --slot-x) in the headword, its meaning and the sentence */
   --slot-a: #6cc3ff;
   --slot-b: #db9cff;
   --slot-t: #ffb487;
-  --slot-x: rgba(243, 244, 250, .78);
+  --slot-x: #72dccb;
 
   --blob-1: #ff5c8a;
   --blob-2: #5a45ff;
@@ -145,7 +145,7 @@
   --slot-a: #1a7fd0;
   --slot-b: #9c45d0;
   --slot-t: #c8571f;
-  --slot-x: rgba(20, 22, 34, .62);
+  --slot-x: #11877a;
 
   --blob-1: #ffc94d;
   --blob-2: #9d8cff;
