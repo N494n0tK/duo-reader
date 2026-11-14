@@ -408,6 +408,7 @@
   // そのまま横に滑らせると指についてきて、離した所の項目に切り替わる。ふつうに押すだけの切り替えは今まで通り。
   var SEG_THUMB = ".tab-thumb, .nw-thumb, .wm-thumb";
   var held = null, eatClick = false, eatTimer = 0;
+  var DROP_AREA = .85; // how much of the pill's area the held drop keeps
   function segPlace(x) {
     var h = held, r = h.bar.getBoundingClientRect(), now = Date.now();
     var a = h.list[0].getBoundingClientRect(), z = h.list[h.list.length - 1].getBoundingClientRect();
@@ -461,8 +462,12 @@
     var list = Array.prototype.filter.call(bar.children, function (x) { return x.tagName === "BUTTON" && !x.hidden; });
     var k = list.indexOf(b);
     if (k < 0 || list.length < 2) return;
-    held = { id: e.pointerId, bar: bar, list: list, k: k, k0: k, x0: e.clientX, moved: false, d: thumb.offsetHeight, v: 0, lx: e.clientX, t: 0 };
-    bar.style.setProperty("--hd", held.d + "px");
+    // squeezed by the finger the pill grows taller and narrower but keeps about 85 % of its area: an oval, not a ball
+    var W = thumb.offsetWidth, H = thumb.offsetHeight, s = 1.28;
+    var d = Math.max(H * 1.2, Math.min(W, W * H * DROP_AREA / (H * s * s)));
+    held = { id: e.pointerId, bar: bar, list: list, k: k, k0: k, x0: e.clientX, moved: false, d: d, v: 0, lx: e.clientX, t: 0 };
+    bar.style.setProperty("--hd", d.toFixed(1) + "px");
+    bar.style.setProperty("--hs", s);
     bar.classList.remove("releasing");
     segPlace(e.clientX);
     bar.classList.add("held");

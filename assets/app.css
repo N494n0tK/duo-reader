@@ -240,12 +240,13 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   transition: --ka .3s var(--ease), --kb .62s var(--spring);
 }
 /* Hold the chosen place and the pill gathers into a round drop under the finger; slide it and let go to choose
-   (pwa/loader.js). --hx is the drop's middle, --hd its size, --hv how fast it moves: a fast drop is drawn out. */
+   (pwa/loader.js). --hx is the drop's middle, --hd its width, --hs how much it swells, --hv how fast it moves:
+   a fast drop is drawn out. Pressed together it keeps a little less than the pill's area, so it stays an oval. */
 .tabs, .nw-tabs, .wm-seg { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .tabs > [aria-selected="true"], .nw-tabs > [aria-selected="true"], .wm-seg > [aria-checked="true"] { touch-action: pan-y; }
 .held > .tab-thumb, .held > .nw-thumb, .held > .wm-thumb {
   left: calc(var(--hx) - var(--hd) / 2); width: var(--hd);
-  scale: calc(1.16 + var(--hv, 0)) calc(1.16 - var(--hv, 0) * .4);
+  scale: calc(var(--hs, 1.16) + var(--hv, 0)) calc(var(--hs, 1.16) - var(--hv, 0) * .4);
   box-shadow: var(--glass-inset), var(--lift), 0 12px 26px -10px rgba(0, 0, 0, .45);
   -webkit-backdrop-filter: var(--bf-clear); backdrop-filter: var(--bf-clear);
   transition: left .42s var(--spring-soft), width .42s var(--spring-soft), scale .45s var(--spring), box-shadow .3s var(--ease);
