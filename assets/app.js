@@ -1090,13 +1090,47 @@
   // ---------- highlighter (assets/marks.js): which DUO word owns each character of a sentence ----------
   var sentenceMarks = window.DuoMarks(DATA).marks;
 
+  // ---------- a phrase's open places (assets/slots.js): which part of the sentence fills its A, B, ～ or do ----------
+  var SLOTS = window.DUO_SLOTS || {};
+  function slotsOf(word) {
+    var x = word && SLOTS[word.id];
+    return x && SENTENCES[word.sid - 1] && x.n === SENTENCES[word.sid - 1].en.length ? x.s : [];
+  }
+  function slotAttr(label) { return ' data-slot="' + esc(label) + '"'; }
+  // the headword: its A / B / ～ / do in their colors (only the places this sentence fills)
+  function headwordHtml(word) {
+    var have = {};
+    slotsOf(word).forEach(function (x) { have[x[0]] = true; });
+    return esc(word.word).replace(/(^|[^A-Za-z'])(A|B|～|〜|doing|done|do)(?![A-Za-z])/g, function (m, pre, ph) {
+      var label = ph === "〜" ? "～" : ph;
+      return have[label] ? pre + '<b class="ph"' + slotAttr(label) + ">" + ph + "</b>" : m;
+    });
+  }
+  // the meaning: the same colors; its ～ stands for do / doing when the headword has no ～ of its own
+  function meaningHtml(word) {
+    var have = {}, verb = "";
+    slotsOf(word).forEach(function (x) { have[x[0]] = true; if (/^do/.test(x[0])) verb = x[0]; });
+    return esc(word.meaning).replace(/(A|B)(?![A-Za-z])|[～〜]/g, function (m, ab, at, all) {
+      if (ab) return /[A-Za-z]/.test(all.charAt(at - 1)) || !have[ab] ? m : '<b class="ph"' + slotAttr(ab) + ">" + m + "</b>";
+      var label = have["～"] ? "～" : verb;
+      return label ? '<b class="ph"' + slotAttr(label) + ">" + m + "</b>" : m;
+    });
+  }
+
   function renderSentenceHtml(sid, activeId) {
     var s = SENTENCES[sid - 1];
     var owner = sentenceMarks(sid);
     var out = "", i = 0, labeled = {}, order = 0;
+    var slots = activeId ? slotsOf(wordById[activeId]) : [], si = 0, inSlot = false;
     while (i < s.en.length) {
-      var id = owner[i], j = i;
-      while (j < s.en.length && owner[j] === id) j++;
+      // the active word's open places wrap their stretch of the sentence (markers inside them are cut at their edges)
+      if (inSlot && i === slots[si][2]) { out += "</span>"; inSlot = false; si++; }
+      if (!inSlot && si < slots.length && i === slots[si][1]) {
+        out += '<span class="slot"' + slotAttr(slots[si][0]) + ' style="--sd:' + (520 + order * 110 + si * 160) + 'ms">';
+        inSlot = true;
+      }
+      var id = owner[i], j = i, stop = inSlot ? slots[si][2] : si < slots.length ? slots[si][1] : s.en.length;
+      while (j < s.en.length && j < stop && owner[j] === id) j++;
       var chunk = esc(s.en.slice(i, j));
       if (id) {
         var num = labeled[id] ? "" : String(+id);
@@ -1108,6 +1142,7 @@
       }
       i = j;
     }
+    if (inSlot) out += "</span>";
     return out;
   }
 
@@ -1421,12 +1456,12 @@
       '<span class="rail-label">#' + pad3(sid) + '</span><span class="rail-cursor"></span><span class="rail-peek" aria-hidden="true"></span></div>';
 
     if (word) {
-      html += '<header class="headword"><div class="headword-line"><h1 class="en"><span>' + esc(word.word) + "</span></h1>" +
+      html += '<header class="headword"><div class="headword-line"><h1 class="en"><span>' + headwordHtml(word) + "</span></h1>" +
         '<span class="pos-tag">' + esc(posLabel(word.pos)) + "</span></div>" +
         (LX.words[word.id] && LX.words[word.id].ipa
           ? '<p class="ipa"><span lang="en">' + esc(LX.words[word.id].ipa) + '</span><span class="ipa-src">米音 · ' + IPA_SRC[LX.words[word.id].ipaSrc] + "</span></p>"
           : "") +
-        '<p class="meaning ja">' + esc(word.meaning) + "</p></header>";
+        '<p class="meaning ja">' + meaningHtml(word) + "</p></header>";
     }
 
     html += '<section class="sentence-card' + (same ? " static" : "") + '"' + colorAttrs(key) + ' data-sid="' + sid + '" aria-label="例文 ' + sid + '">' +

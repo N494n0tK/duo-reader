@@ -83,7 +83,7 @@
     var old = document.querySelector(".importer");
     if (old) old.remove();
     var s = document.createElement("script");
-    s.src = "assets/app.js?v=ff18f7ae7a";
+    s.src = "assets/app.js?v=a5c70b9219";
     document.body.appendChild(s);
     setupDataButton(pack);
   }

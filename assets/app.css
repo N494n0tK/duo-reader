@@ -60,6 +60,11 @@
   --c-y: #ffc35a;
   --c-g: #56dba4;
 
+  /* the open places of a phrase (A, B, ～ / do) in the headword, its meaning and the sentence */
+  --slot-a: #6cc3ff;
+  --slot-b: #db9cff;
+  --slot-x: rgba(243, 244, 250, .78);
+
   --blob-1: #ff5c8a;
   --blob-2: #5a45ff;
   --blob-3: #10c2b0;
@@ -135,6 +140,10 @@
   --c-r: #ec4f6b;
   --c-y: #eba21c;
   --c-g: #17ad72;
+
+  --slot-a: #1a7fd0;
+  --slot-b: #9c45d0;
+  --slot-x: rgba(20, 22, 34, .62);
 
   --blob-1: #ffc94d;
   --blob-2: #9d8cff;
@@ -961,6 +970,29 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .syn-now .sentence-en .syn-br, .syn-now .sentence-en .syn-br::after { transition: none !important; }
 .syn .sentence-en { line-height: 2.6; }
 .sentence-en { transition: line-height .35s var(--ease); }
+/* A phrase's open places (the letter is a plain inline box, so it never wraps away from its first word): on a word's page its A / B / ～ / do get a color of their own in the headword and the meaning,
+   and the part of the sentence that fills each one is laid in a soft glass of that color with its letter at the front. */
+[data-slot] { --slot: var(--slot-x); }
+[data-slot="A"] { --slot: var(--slot-a); }
+[data-slot="B"] { --slot: var(--slot-b); }
+.ph { color: var(--slot); text-shadow: 0 0 18px color-mix(in srgb, var(--slot) 45%, transparent); }
+.meaning .ph { font-weight: 600; }
+.slot {
+  border-radius: .3em; padding: .02em .08em;
+  background: color-mix(in srgb, var(--slot) 12%, transparent);
+  box-shadow: inset 0 0 0 .6px color-mix(in srgb, var(--slot) 42%, transparent), inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent);
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  animation: slot-in .7s var(--ease) both; animation-delay: var(--sd, 0ms);
+}
+.slot::before {
+  content: attr(data-slot); vertical-align: .6em; margin: 0 .24em 0 .04em; padding: 2px 4px 1px; border-radius: 4px;
+  font: 700 9px/1 var(--mono); letter-spacing: .03em; color: var(--slot);
+  background: color-mix(in srgb, var(--slot) 18%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--slot) 40%, transparent);
+  -webkit-user-select: none; user-select: none;
+  animation: pop .45s var(--spring) both; animation-delay: calc(var(--sd, 0ms) + 120ms);
+}
+@keyframes slot-in { from { background-color: transparent; box-shadow: inset 0 0 0 .6px transparent, inset 0 1px 0 transparent; } }
+.static .slot, .static .slot::before { animation-delay: 0ms; }
 .static .hl { animation: none; --draw: 1; }
 .static .hl rt { animation: none; opacity: .95; }
 
